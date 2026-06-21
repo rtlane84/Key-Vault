@@ -3,20 +3,32 @@ info:
   # Do not change the title, if the title changes, the import paths will be broken
   title: Api
   version: 0.1.0
-  description: API specification
+  description: eBay License Key Delivery API
 servers:
   - url: /api
     description: Base API path
 tags:
   - name: health
     description: Health operations
+  - name: products
+    description: Product management
+  - name: keys
+    description: License key management
+  - name: orders
+    description: Order management
+  - name: ebay
+    description: eBay integration
+  - name: sync-logs
+    description: Sync activity logs
+  - name: dashboard
+    description: Dashboard statistics
+
 paths:
   /healthz:
     get:
       operationId: healthCheck
       tags: [health]
       summary: Health check
-      description: Returns server health status
       responses:
         "200":
           description: Healthy
@@ -24,6 +36,398 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+
+  # Products
+  /products:
+    get:
+      operationId: listProducts
+      tags: [products]
+      summary: List all products
+      responses:
+        "200":
+          description: List of products
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Product"
+    post:
+      operationId: createProduct
+      tags: [products]
+      summary: Create a product
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProductInput"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Product"
+
+  /products/{id}:
+    get:
+      operationId: getProduct
+      tags: [products]
+      summary: Get a product
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Product
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Product"
+        "404":
+          description: Not found
+    patch:
+      operationId: updateProduct
+      tags: [products]
+      summary: Update a product
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProductUpdate"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Product"
+        "404":
+          description: Not found
+    delete:
+      operationId: deleteProduct
+      tags: [products]
+      summary: Delete a product
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+        "404":
+          description: Not found
+
+  # License Keys
+  /keys:
+    get:
+      operationId: listKeys
+      tags: [keys]
+      summary: List license keys
+      parameters:
+        - name: productId
+          in: query
+          schema:
+            type: integer
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [available, assigned, failed]
+      responses:
+        "200":
+          description: List of keys
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/LicenseKey"
+    post:
+      operationId: createKey
+      tags: [keys]
+      summary: Create a single license key
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LicenseKeyInput"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LicenseKey"
+
+  /keys/import:
+    post:
+      operationId: importKeys
+      tags: [keys]
+      summary: Bulk import license keys
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/KeyImport"
+      responses:
+        "200":
+          description: Import result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/KeyImportResult"
+
+  /keys/{id}:
+    delete:
+      operationId: deleteKey
+      tags: [keys]
+      summary: Delete a license key
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+        "404":
+          description: Not found
+
+  # Orders
+  /orders:
+    get:
+      operationId: listOrders
+      tags: [orders]
+      summary: List all orders
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [pending, fulfilled, failed]
+        - name: source
+          in: query
+          schema:
+            type: string
+            enum: [manual, ebay]
+      responses:
+        "200":
+          description: List of orders
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Order"
+    post:
+      operationId: createOrder
+      tags: [orders]
+      summary: Manually create and fulfill an order
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OrderInput"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Order"
+
+  /orders/{id}:
+    get:
+      operationId: getOrder
+      tags: [orders]
+      summary: Get an order
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Order
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Order"
+        "404":
+          description: Not found
+
+  /orders/{id}/fulfill:
+    post:
+      operationId: fulfillOrder
+      tags: [orders]
+      summary: Manually fulfill a pending/failed order
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Fulfilled
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Order"
+        "404":
+          description: Not found
+
+  # eBay integration
+  /ebay/status:
+    get:
+      operationId: getEbayStatus
+      tags: [ebay]
+      summary: Get eBay connection status
+      responses:
+        "200":
+          description: Connection status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EbayStatus"
+
+  /ebay/connect:
+    get:
+      operationId: getEbayConnectUrl
+      tags: [ebay]
+      summary: Get eBay OAuth authorization URL
+      responses:
+        "200":
+          description: Authorization URL
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EbayConnectUrl"
+
+  /ebay/disconnect:
+    post:
+      operationId: disconnectEbay
+      tags: [ebay]
+      summary: Disconnect eBay account
+      responses:
+        "200":
+          description: Disconnected
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EbayStatus"
+
+  /ebay/sync:
+    post:
+      operationId: triggerEbaySync
+      tags: [ebay]
+      summary: Trigger eBay order sync
+      responses:
+        "200":
+          description: Sync result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SyncResult"
+
+  /ebay/mock-sync:
+    post:
+      operationId: triggerMockSync
+      tags: [ebay]
+      summary: Trigger mock eBay sync (no real eBay account needed)
+      responses:
+        "200":
+          description: Mock sync result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SyncResult"
+
+  # Sync logs
+  /sync-logs:
+    get:
+      operationId: listSyncLogs
+      tags: [sync-logs]
+      summary: List sync log entries
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+      responses:
+        "200":
+          description: Sync logs
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/SyncLog"
+
+  # Dashboard
+  /dashboard/stats:
+    get:
+      operationId: getDashboardStats
+      tags: [dashboard]
+      summary: Dashboard overview statistics
+      responses:
+        "200":
+          description: Dashboard statistics
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DashboardStats"
+
+  /dashboard/alerts:
+    get:
+      operationId: getDashboardAlerts
+      tags: [dashboard]
+      summary: Active alerts (products with no available keys, failed orders)
+      responses:
+        "200":
+          description: Alerts
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Alert"
+
+  /dashboard/recent-activity:
+    get:
+      operationId: getRecentActivity
+      tags: [dashboard]
+      summary: Recent fulfilled orders and sync events
+      responses:
+        "200":
+          description: Recent activity feed
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ActivityItem"
+
 components:
   schemas:
     HealthStatus:
@@ -31,6 +435,283 @@ components:
       properties:
         status:
           type: string
-      required:
-        - status
+      required: [status]
 
+    Product:
+      type: object
+      required: [id, name, sku, ebayListingId, availableKeyCount, totalKeyCount, createdAt]
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        sku:
+          type: string
+        ebayListingId:
+          type: ["string", "null"]
+        description:
+          type: ["string", "null"]
+        availableKeyCount:
+          type: integer
+        totalKeyCount:
+          type: integer
+        createdAt:
+          type: string
+
+    ProductInput:
+      type: object
+      required: [name, sku]
+      properties:
+        name:
+          type: string
+          minLength: 1
+        sku:
+          type: string
+          minLength: 1
+        ebayListingId:
+          type: string
+        description:
+          type: string
+
+    ProductUpdate:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+        sku:
+          type: string
+        ebayListingId:
+          type: ["string", "null"]
+        description:
+          type: ["string", "null"]
+
+    LicenseKey:
+      type: object
+      required: [id, productId, keyValue, status, createdAt]
+      properties:
+        id:
+          type: integer
+        productId:
+          type: integer
+        keyValue:
+          type: string
+        status:
+          type: string
+          enum: [available, assigned, failed]
+        orderId:
+          type: ["integer", "null"]
+        assignedAt:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+
+    LicenseKeyInput:
+      type: object
+      required: [productId, keyValue]
+      properties:
+        productId:
+          type: integer
+        keyValue:
+          type: string
+          minLength: 1
+
+    KeyImport:
+      type: object
+      required: [productId, keys]
+      properties:
+        productId:
+          type: integer
+        keys:
+          type: array
+          items:
+            type: string
+
+    KeyImportResult:
+      type: object
+      required: [imported, skipped, total]
+      properties:
+        imported:
+          type: integer
+        skipped:
+          type: integer
+        total:
+          type: integer
+
+    Order:
+      type: object
+      required: [id, source, status, buyerEmail, productId, createdAt]
+      properties:
+        id:
+          type: integer
+        source:
+          type: string
+          enum: [manual, ebay]
+        status:
+          type: string
+          enum: [pending, fulfilled, failed]
+        buyerEmail:
+          type: string
+        buyerName:
+          type: ["string", "null"]
+        productId:
+          type: integer
+        productName:
+          type: ["string", "null"]
+        ebayOrderId:
+          type: ["string", "null"]
+        ebayLineItemId:
+          type: ["string", "null"]
+        assignedKeyId:
+          type: ["integer", "null"]
+        assignedKeyValue:
+          type: ["string", "null"]
+        failureReason:
+          type: ["string", "null"]
+        fulfilledAt:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+
+    OrderInput:
+      type: object
+      required: [buyerEmail, productId]
+      properties:
+        buyerEmail:
+          type: string
+        buyerName:
+          type: string
+        productId:
+          type: integer
+
+    EbayStatus:
+      type: object
+      required: [connected, mockMode]
+      properties:
+        connected:
+          type: boolean
+        mockMode:
+          type: boolean
+        sellerId:
+          type: ["string", "null"]
+        tokenExpiresAt:
+          type: ["string", "null"]
+        lastSyncAt:
+          type: ["string", "null"]
+
+    EbayConnectUrl:
+      type: object
+      required: [url]
+      properties:
+        url:
+          type: string
+
+    SyncResult:
+      type: object
+      required: [ordersFound, ordersProcessed, keysAssigned, failed, skipped]
+      properties:
+        ordersFound:
+          type: integer
+        ordersProcessed:
+          type: integer
+        keysAssigned:
+          type: integer
+        failed:
+          type: integer
+        skipped:
+          type: integer
+        errors:
+          type: array
+          items:
+            type: string
+
+    SyncLog:
+      type: object
+      required: [id, event, createdAt]
+      properties:
+        id:
+          type: integer
+        event:
+          type: string
+          enum: [sync_started, sync_completed, order_processed, key_assigned, key_send_failed, no_key_available, duplicate_skipped, oauth_connected, oauth_disconnected]
+        level:
+          type: string
+          enum: [info, warn, error]
+        ebayOrderId:
+          type: ["string", "null"]
+        orderId:
+          type: ["integer", "null"]
+        productId:
+          type: ["integer", "null"]
+        keyId:
+          type: ["integer", "null"]
+        message:
+          type: string
+        meta:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+
+    DashboardStats:
+      type: object
+      required: [totalProducts, totalKeys, availableKeys, totalOrders, fulfilledOrders, failedOrders, pendingOrders, ebayConnected, lastSyncAt]
+      properties:
+        totalProducts:
+          type: integer
+        totalKeys:
+          type: integer
+        availableKeys:
+          type: integer
+        totalOrders:
+          type: integer
+        fulfilledOrders:
+          type: integer
+        failedOrders:
+          type: integer
+        pendingOrders:
+          type: integer
+        ebayConnected:
+          type: boolean
+        lastSyncAt:
+          type: ["string", "null"]
+
+    Alert:
+      type: object
+      required: [id, type, message, severity, createdAt]
+      properties:
+        id:
+          type: string
+        type:
+          type: string
+          enum: [no_keys, failed_order, connection_lost]
+        message:
+          type: string
+        severity:
+          type: string
+          enum: [warning, error]
+        productId:
+          type: ["integer", "null"]
+        orderId:
+          type: ["integer", "null"]
+        createdAt:
+          type: string
+
+    ActivityItem:
+      type: object
+      required: [id, type, message, createdAt]
+      properties:
+        id:
+          type: integer
+        type:
+          type: string
+          enum: [order_fulfilled, sync_completed, key_assigned, order_failed]
+        message:
+          type: string
+        buyerEmail:
+          type: ["string", "null"]
+        productName:
+          type: ["string", "null"]
+        ebayOrderId:
+          type: ["string", "null"]
+        createdAt:
+          type: string
