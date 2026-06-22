@@ -5,9 +5,12 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
-import { ArrowLeft, Key, Trash2 } from "lucide-react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { ArrowLeft, Key, Trash2, Edit } from "lucide-react";
 import {
   useGetProduct,
+  useUpdateProduct,
   useListKeys,
   useImportKeys,
   useDeleteKey,
@@ -18,6 +21,84 @@ import {
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
+
+function EditProductDialog({ product }: { product: any }) {
+  const [open, setOpen] = useState(false);
+  const [name, setName] = useState(product.name);
+  const [sku, setSku] = useState(product.sku);
+  const [price, setPrice] = useState((product.price / 100).toString());
+  const [stripePriceId, setStripePriceId] = useState(product.stripePriceId || "");
+  const [ebayListingId, setEbayListingId] = useState(product.ebayListingId || "");
+  const [description, setDescription] = useState(product.description || "");
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+  const updateProduct = useUpdateProduct();
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      await updateProduct.mutateAsync({
+        id: product.id,
+        data: {
+          name,
+          sku,
+          price: Math.round(parseFloat(price) * 100),
+          stripePriceId: stripePriceId || null,
+          ebayListingId: ebayListingId || null,
+          description: description || null,
+        },
+      });
+      toast({ title: "Product updated" });
+      queryClient.invalidateQueries({ queryKey: getGetProductQueryKey(product.id) });
+      queryClient.invalidateQueries({ queryKey: getListProductsQueryKey() });
+      setOpen(false);
+    } catch {
+      toast({ title: "Failed to update product", variant: "destructive" });
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button variant="outline" size="sm"><Edit className="h-4 w-4 mr-2" />Edit Product</Button>
+      </DialogTrigger>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Edit Product</DialogTitle>
+        </DialogHeader>
+        <form onSubmit={handleSubmit} className="space-y-4 mt-2">
+          <div className="space-y-1">
+            <Label htmlFor="edit-name">Product Name</Label>
+            <Input id="edit-name" value={name} onChange={e => setName(e.target.value)} required />
+          </div>
+          <div className="space-y-1">
+            <Label htmlFor="edit-sku">SKU</Label>
+            <Input id="edit-sku" value={sku} onChange={e => setSku(e.target.value)} required />
+          </div>
+          <div className="space-y-1">
+            <Label htmlFor="edit-price">Price (USD)</Label>
+            <Input id="edit-price" type="number" min="0" step="0.01" value={price} onChange={e => setPrice(e.target.value)} required />
+          </div>
+          <div className="space-y-1">
+            <Label htmlFor="edit-stripePriceId">Stripe Price ID</Label>
+            <Input id="edit-stripePriceId" value={stripePriceId} onChange={e => setStripePriceId(e.target.value)} placeholder="price_..." />
+          </div>
+          <div className="space-y-1">
+            <Label htmlFor="edit-listing">eBay Listing ID</Label>
+            <Input id="edit-listing" value={ebayListingId} onChange={e => setEbayListingId(e.target.value)} placeholder="123456789" />
+          </div>
+          <div className="space-y-1">
+            <Label htmlFor="edit-desc">Description</Label>
+            <Input id="edit-desc" value={description} onChange={e => setDescription(e.target.value)} />
+          </div>
+          <Button type="submit" className="w-full" disabled={updateProduct.isPending}>
+            {updateProduct.isPending ? "Updating..." : "Update Product"}
+          </Button>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
 
 export default function ProductDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -82,13 +163,22 @@ export default function ProductDetailPage() {
           <Button variant="ghost" size="sm"><ArrowLeft className="h-4 w-4 mr-1" />Products</Button>
         </Link>
         <h1 className="text-3xl font-bold tracking-tight">{product.name}</h1>
+        <div className="ml-auto">
+          <EditProductDialog product={product} />
+        </div>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-3">
+      <div className="grid gap-4 md:grid-cols-4">
         <Card>
           <CardContent className="pt-5">
             <div className="text-xs text-muted-foreground mb-1">SKU</div>
             <div className="font-mono font-semibold">{product.sku}</div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="pt-5">
+            <div className="text-xs text-muted-foreground mb-1">Stripe Price ID</div>
+            <div className="font-mono font-semibold">{product.stripePriceId ?? "—"}</div>
           </CardContent>
         </Card>
         <Card>

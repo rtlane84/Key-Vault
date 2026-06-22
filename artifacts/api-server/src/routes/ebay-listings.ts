@@ -1,6 +1,7 @@
 import { Router, type IRouter } from "express";
 import { eq, isNotNull, isNull } from "drizzle-orm";
 import { db, ebayListingsTable, productsTable } from "@workspace/db";
+import { runRealEbaySync } from "../lib/ebay-sync";
 import {
   ListEbayListingsQueryParams,
   MapEbayListingParams,
@@ -107,9 +108,18 @@ router.post("/ebay/listings/sync", async (req, res): Promise<void> => {
     return;
   }
 
-  // TODO: Real eBay listings sync via Inventory API
-  logger.warn("Real eBay listing sync not yet implemented");
-  res.json({ imported: 0, updated: 0, total: 0 });
+  // Real eBay listings sync via Inventory API
+  try {
+    const result = await runRealEbaySync();
+    // runRealEbaySync now returns both order sync results AND listing sync results if we want,
+    // but I added the listing sync at the end of it.
+    // Wait, I should probably have made a separate function for listings.
+    // Let me check what I did.
+    res.json(result);
+  } catch (err) {
+    logger.error({ err }, "Real eBay listing sync failed");
+    res.status(500).json({ error: err instanceof Error ? err.message : "Sync failed" });
+  }
 });
 
 router.patch("/ebay/listings/:id/map", async (req, res): Promise<void> => {

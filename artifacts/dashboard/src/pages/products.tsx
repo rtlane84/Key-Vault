@@ -24,6 +24,7 @@ function AddProductDialog() {
   const [name, setName] = useState("");
   const [sku, setSku] = useState("");
   const [price, setPrice] = useState("");
+  const [stripePriceId, setStripePriceId] = useState("");
   const [ebayListingId, setEbayListingId] = useState("");
   const [description, setDescription] = useState("");
   const queryClient = useQueryClient();
@@ -39,6 +40,7 @@ function AddProductDialog() {
           sku,
           slug: slugify(name),
           price: parseFloat(price),
+          stripePriceId: stripePriceId || undefined,
           ebayListingId: ebayListingId || undefined,
           description: description || undefined,
         },
@@ -46,7 +48,7 @@ function AddProductDialog() {
       toast({ title: "Product created" });
       queryClient.invalidateQueries({ queryKey: getListProductsQueryKey() });
       setOpen(false);
-      setName(""); setSku(""); setPrice(""); setEbayListingId(""); setDescription("");
+      setName(""); setSku(""); setPrice(""); setStripePriceId(""); setEbayListingId(""); setDescription("");
     } catch {
       toast({ title: "Failed to create product", variant: "destructive" });
     }
@@ -73,6 +75,10 @@ function AddProductDialog() {
           <div className="space-y-1">
             <Label htmlFor="price">Price (USD)</Label>
             <Input id="price" type="number" min="0" step="0.01" value={price} onChange={e => setPrice(e.target.value)} required placeholder="29.99" />
+          </div>
+          <div className="space-y-1">
+            <Label htmlFor="stripePriceId">Stripe Price ID</Label>
+            <Input id="stripePriceId" value={stripePriceId} onChange={e => setStripePriceId(e.target.value)} placeholder="price_..." />
           </div>
           <div className="space-y-1">
             <Label htmlFor="listing">eBay Listing ID</Label>
@@ -123,6 +129,7 @@ export default function ProductsPage() {
                     <div className="font-semibold">{product.name}</div>
                     <div className="text-xs text-muted-foreground font-mono mt-0.5">
                       SKU: {product.sku}
+                      {product.stripePriceId && <span className="ml-3">Stripe: {product.stripePriceId}</span>}
                       {product.ebayListingId && <span className="ml-3">eBay: {product.ebayListingId}</span>}
                     </div>
                   </div>

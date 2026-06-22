@@ -1,6 +1,7 @@
-import { db, productsTable, licenseKeysTable, ordersTable, syncLogsTable, ebaySettingsTable } from "@workspace/db";
+import { db, productsTable, licenseKeysTable, ordersTable, syncLogsTable, ebaySettingsTable, ebayListingsTable } from "@workspace/db";
 import { eq, and, isNull } from "drizzle-orm";
 import { logger } from "./logger";
+import { fulfillOrder } from "./fulfillment";
 
 export interface MockEbayOrder {
   ebayOrderId: string;
@@ -204,16 +205,23 @@ async function processOrder(order: {
   });
 
   // In production, send email here. For now, log the "send"
-  logger.info({ buyerEmail: order.buyerEmail, keyValue: key.keyValue }, "Key delivery logged (email would be sent here)");
-  await logEvent({
-    event: "order_processed",
-    level: "info",
-    message: `Order fulfilled for ${order.buyerEmail} — key sent`,
-    ebayOrderId: order.ebayOrderId,
+  const fulfillmentResult = await fulfillOrder({
     orderId: newOrder.id,
     productId: product.id,
-    keyId: key.id,
+    buyerEmail: order.buyerEmail,
+    buyerName: order.buyerName,
   });
+
+  if (!fulfillmentResult.success) {
+    await logEvent({
+      event: "fulfillment_failed",
+      level: "error",
+      message: `Fulfillment failed for order ${order.ebayOrderId}: ${fulfillmentResult.error}`,
+      ebayOrderId: order.ebayOrderId,
+      orderId: newOrder.id,
+    });
+    return { success: false, error: fulfillmentResult.error };
+  }
 
   return { success: true };
 }
@@ -294,65 +302,82 @@ export async function runRealEbaySync(): Promise<SyncResult> {
     errors: [],
   };
 
-  // Fetch orders from eBay Sell Fulfillment API
-  // Only orders with PAID checkout status, last 30 days
-  const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
-  const filter = `lastmodifieddate:[${thirtyDaysAgo.toISOString()}..] and orderfulfillmentstatus:{NOT_STARTED|IN_PROGRESS}`;
+  // 1. Sync Orders
+  try {
+    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+    const filter = `lastmodifieddate:[${thirtyDaysAgo.toISOString()}..] and orderfulfillmentstatus:{NOT_STARTED|IN_PROGRESS}`;
 
-  const response = await fetch(
-    `https://api.ebay.com/sell/fulfillment/v1/order?filter=${encodeURIComponent(filter)}&limit=200`,
-    {
-      headers: {
-        Authorization: `Bearer ${s.accessToken}`,
-        "Content-Type": "application/json",
-      },
+    const response = await fetch(
+      `https://api.ebay.com/sell/fulfillment/v1/order?filter=${encodeURIComponent(filter)}&limit=200`,
+      {
+        headers: {
+          Authorization: `Bearer ${s.accessToken}`,
+          "Content-Type": "application/json",
+        },
+      }
+    );
+
+    if (response.ok) {
+      const data = await response.json() as { orders?: Array<Record<string, unknown>>, total?: number };
+      const orders = data.orders ?? [];
+      result.ordersFound = data.total ?? orders.length;
+
+      for (const ebayOrder of orders) {
+        const lineItems = (ebayOrder.lineItems as Array<Record<string, unknown>>) ?? [];
+        for (const lineItem of lineItems) {
+          try {
+            const buyerEmail = (ebayOrder.buyer as Record<string, string>)?.username ?? "";
+            const ebayOrderId = ebayOrder.orderId as string;
+            const ebayLineItemId = lineItem.lineItemId as string;
+            const sku = lineItem.sku as string | undefined;
+            const listingId = (lineItem.listingMarketplaceId ?? lineItem.legacyItemId) as string | undefined;
+
+            const res = await processOrder({
+              ebayOrderId,
+              ebayLineItemId,
+              buyerEmail,
+              buyerName: "",
+              sku,
+              ebayListingId: listingId,
+            });
+
+            if (res.skipped) {
+              result.skipped++;
+            } else if (res.success) {
+              result.ordersProcessed++;
+              result.keysAssigned++;
+            } else {
+              result.failed++;
+              if (res.error) result.errors.push(res.error);
+            }
+          } catch (err) {
+            result.failed++;
+            const msg = err instanceof Error ? err.message : String(err);
+            result.errors.push(msg);
+            logger.error({ err }, "Failed to process eBay order line item");
+          }
+        }
+      }
+    } else {
+      const text = await response.text();
+      logger.error({ status: response.status, text }, "eBay Order API error");
+      result.errors.push(`Order API error: ${response.status}`);
     }
-  );
-
-  if (!response.ok) {
-    const text = await response.text();
-    throw new Error(`eBay API error ${response.status}: ${text}`);
+  } catch (err) {
+    logger.error({ err }, "eBay Order sync failed");
+    result.errors.push("Order sync failed");
   }
 
-  const data = await response.json() as { orders?: Array<Record<string, unknown>>, total?: number };
-  const orders = data.orders ?? [];
-  result.ordersFound = data.total ?? orders.length;
-
-  for (const ebayOrder of orders) {
-    const lineItems = (ebayOrder.lineItems as Array<Record<string, unknown>>) ?? [];
-    for (const lineItem of lineItems) {
-      try {
-        const buyerEmail = (ebayOrder.buyer as Record<string, string>)?.username ?? "";
-        const ebayOrderId = ebayOrder.orderId as string;
-        const ebayLineItemId = lineItem.lineItemId as string;
-        const sku = lineItem.sku as string | undefined;
-        const listingId = (lineItem.listingMarketplaceId ?? lineItem.legacyItemId) as string | undefined;
-
-        const res = await processOrder({
-          ebayOrderId,
-          ebayLineItemId,
-          buyerEmail,
-          buyerName: "",
-          sku,
-          ebayListingId: listingId,
-        });
-
-        if (res.skipped) {
-          result.skipped++;
-        } else if (res.success) {
-          result.ordersProcessed++;
-          result.keysAssigned++;
-        } else {
-          result.failed++;
-          if (res.error) result.errors.push(res.error);
-        }
-      } catch (err) {
-        result.failed++;
-        const msg = err instanceof Error ? err.message : String(err);
-        result.errors.push(msg);
-        logger.error({ err }, "Failed to process eBay order line item");
-      }
+  // 2. Sync Listings (Inventory API)
+  try {
+    if (s.accessToken) {
+      await syncEbayListings(s.accessToken);
+    } else {
+      logger.warn("Skipping eBay listing sync: No access token available");
     }
+  } catch (err) {
+    logger.error({ err }, "eBay Listing sync failed");
+    result.errors.push("Listing sync failed");
   }
 
   await logEvent({
@@ -366,6 +391,75 @@ export async function runRealEbaySync(): Promise<SyncResult> {
   await db.update(ebaySettingsTable).set({ lastSyncAt: new Date() }).where(eq(ebaySettingsTable.id, s.id));
 
   return result;
+}
+
+export async function syncEbayListings(accessToken: string): Promise<{ imported: number, updated: number, total: number }> {
+  logger.info("Real eBay listing sync started (using Inventory API)");
+
+  const response = await fetch("https://api.ebay.com/sell/inventory/v1/inventory_item?limit=100&offset=0", {
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": "application/json",
+    },
+  });
+
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`eBay Inventory API error ${response.status}: ${text}`);
+  }
+
+  const data = await response.json() as { inventoryItems?: any[] };
+  const items = data.inventoryItems ?? [];
+
+  let imported = 0;
+  let updated = 0;
+
+  for (const item of items) {
+    const sku = item.sku;
+    const offerResponse = await fetch(`https://api.ebay.com/sell/inventory/v1/offer?sku=${encodeURIComponent(sku)}`, {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+    });
+
+    if (offerResponse.ok) {
+      const offerData = await offerResponse.json() as { offers?: any[] };
+      const offers = offerData.offers ?? [];
+      for (const offer of offers) {
+        if (!offer.listingId) continue;
+
+        const listingId = offer.listingId;
+        const existing = await db.select().from(ebayListingsTable)
+          .where(eq(ebayListingsTable.listingId, listingId)).limit(1);
+
+        // Auto-map by SKU
+        const matchedProducts = await db.select().from(productsTable)
+          .where(eq(productsTable.sku, sku)).limit(1);
+        const productId = matchedProducts[0]?.id ?? null;
+
+        const listingData = {
+          listingId,
+          title: item.product?.title || "Unknown Title",
+          sku,
+          price: offer.price?.value ? Math.round(parseFloat(offer.price.value) * 100) : 0,
+          quantity: item.availability?.shipToLocationAvailability?.quantity ?? 0,
+          status: offer.status === "PUBLISHED" ? "active" : "ended",
+          productId: existing[0]?.productId ?? productId,
+          lastSyncAt: new Date(),
+        };
+
+        if (existing.length === 0) {
+          await db.insert(ebayListingsTable).values(listingData);
+          imported++;
+        } else {
+          await db.update(ebayListingsTable).set(listingData).where(eq(ebayListingsTable.listingId, listingId));
+          updated++;
+        }
+      }
+    }
+  }
+
+  return { imported, updated, total: items.length };
 }
 
 export async function fulfillOrderById(orderId: number): Promise<{ success: boolean; error?: string }> {

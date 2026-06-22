@@ -11,8 +11,10 @@ export function Sidebar() {
     { label: "Dashboard", href: "/", icon: Activity },
     { label: "Products", href: "/products", icon: Package },
     { label: "Orders", href: "/orders", icon: ShoppingCart },
-    { label: "Logs", href: "/logs", icon: ListTree },
+    { label: "eBay Listings", href: "/ebay/listings", icon: Settings },
+    { label: "eBay Orders", href: "/ebay/orders", icon: ShoppingCart },
     { label: "eBay Sync", href: "/ebay", icon: Settings },
+    { label: "Logs", href: "/logs", icon: ListTree },
   ];
 
   function handleSignOut() {

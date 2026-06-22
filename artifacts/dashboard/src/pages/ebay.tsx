@@ -3,7 +3,8 @@ import { useSearch } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { CheckCircle, XCircle, RefreshCw, Link as LinkIcon, Unlink } from "lucide-react";
+import { CheckCircle, XCircle, RefreshCw, Link as LinkIcon, Unlink, Clock } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   useGetEbayStatus,
   useGetEbayConnectUrl,
@@ -11,8 +12,11 @@ import {
   useTriggerEbaySync,
   useTriggerMockSync,
   useListSyncLogs,
+  useGetEbayPollSettings,
+  useUpdateEbayPollSettings,
   getGetEbayStatusQueryKey,
   getListSyncLogsQueryKey,
+  getGetEbayPollSettingsQueryKey,
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
@@ -46,6 +50,9 @@ export default function EbayPage() {
       queryClient.invalidateQueries({ queryKey: getGetEbayStatusQueryKey() });
     }
   }, [justConnected]);
+
+  const { data: pollSettings } = useGetEbayPollSettings();
+  const updatePollSettings = useUpdateEbayPollSettings();
 
   const handleConnect = () => {
     if (connectData?.url && connectData.url !== "#mock-mode-no-ebay-credentials") {
@@ -86,6 +93,19 @@ export default function EbayPage() {
       queryClient.invalidateQueries({ queryKey: getListSyncLogsQueryKey() });
     } catch {
       toast({ title: "Mock sync failed", variant: "destructive" });
+    }
+  };
+
+  const handleIntervalChange = async (val: string) => {
+    try {
+      const interval = parseInt(val, 10);
+      await updatePollSettings.mutateAsync({ 
+        data: { pollIntervalMinutes: interval as 0 | 1 | 2 | 5 | 10 | 15 } 
+      });
+      toast({ title: "Poll settings updated" });
+      queryClient.invalidateQueries({ queryKey: getGetEbayPollSettingsQueryKey() });
+    } catch {
+      toast({ title: "Failed to update poll settings", variant: "destructive" });
     }
   };
 
@@ -154,8 +174,46 @@ export default function EbayPage() {
 
         <Card>
           <CardHeader>
-            <CardTitle>Manual Sync</CardTitle>
+            <CardTitle className="flex items-center gap-2">
+              <Clock className="h-5 w-5" /> Automatic Polling
+            </CardTitle>
           </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Poll Interval</label>
+              <Select
+                value={pollSettings?.pollIntervalMinutes?.toString() || "0"}
+                onValueChange={handleIntervalChange}
+                disabled={updatePollSettings.isPending}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select interval" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="0">Disabled</SelectItem>
+                  <SelectItem value="1">1 minute</SelectItem>
+                  <SelectItem value="2">2 minutes</SelectItem>
+                  <SelectItem value="5">5 minutes</SelectItem>
+                  <SelectItem value="10">10 minutes</SelectItem>
+                  <SelectItem value="15">15 minutes</SelectItem>
+                  <SelectItem value="30">30 minutes</SelectItem>
+                  <SelectItem value="60">60 minutes</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            {pollSettings?.pollIntervalMinutes && pollSettings.pollIntervalMinutes > 0 ? (
+              <div className="p-3 rounded-md bg-primary/10 border border-primary/20 text-sm">
+                System is polling eBay every {pollSettings.pollIntervalMinutes} minutes.
+              </div>
+            ) : (
+              <div className="p-3 rounded-md bg-muted border border-border text-sm text-muted-foreground">
+                Automatic polling is currently disabled.
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
           <CardContent className="space-y-4">
             <p className="text-sm text-muted-foreground">
               Trigger a sync to pull recent paid eBay orders and assign license keys automatically.

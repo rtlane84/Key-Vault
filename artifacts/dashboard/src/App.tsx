@@ -11,6 +11,8 @@ import ProductDetailPage from "@/pages/product-detail";
 import OrdersPage from "@/pages/orders";
 import EbayPage from "@/pages/ebay";
 import LogsPage from "@/pages/logs";
+import EbayListingsPage from "@/pages/ebay-listings";
+import EbayOrdersPage from "@/pages/ebay-orders";
 import { isAuthenticated, clearToken } from "@/lib/auth";
 function makeQueryClient() {
   return new QueryClient({
@@ -59,6 +61,8 @@ function Router() {
               <Route path="/products/:id" component={() => <ProtectedRoute component={ProductDetailPage} />} />
               <Route path="/orders" component={() => <ProtectedRoute component={OrdersPage} />} />
               <Route path="/ebay" component={() => <ProtectedRoute component={EbayPage} />} />
+              <Route path="/ebay/listings" component={() => <ProtectedRoute component={EbayListingsPage} />} />
+              <Route path="/ebay/orders" component={() => <ProtectedRoute component={EbayOrdersPage} />} />
               <Route path="/logs" component={() => <ProtectedRoute component={LogsPage} />} />
               <Route component={NotFound} />
             </Switch>
