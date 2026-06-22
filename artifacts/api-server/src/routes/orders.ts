@@ -6,8 +6,10 @@ import {
   ListOrdersQueryParams,
   GetOrderParams,
   FulfillOrderParams,
+  ResendOrderEmailParams,
 } from "@workspace/api-zod";
-import { fulfillOrderById } from "../lib/ebay-sync";
+import { fulfillOrder } from "../lib/fulfillment";
+import { sendLicenseEmail } from "../lib/email";
 
 const router: IRouter = Router();
 
@@ -26,8 +28,11 @@ async function formatOrder(o: typeof ordersTable.$inferSelect) {
     buyerName: o.buyerName ?? null,
     productId: o.productId,
     productName,
+    quantity: o.quantity,
     ebayOrderId: o.ebayOrderId ?? null,
     ebayLineItemId: o.ebayLineItemId ?? null,
+    stripePaymentIntentId: o.stripePaymentIntentId ?? null,
+    stripeSessionId: o.stripeSessionId ?? null,
     assignedKeyId: o.assignedKeyId ?? null,
     assignedKeyValue: o.assignedKeyValue ?? null,
     failureReason: o.failureReason ?? null,
@@ -48,7 +53,6 @@ router.get("/orders", async (req, res): Promise<void> => {
 
   if (params.data.status) conditions.push(eq(ordersTable.status, params.data.status));
   if (params.data.source) conditions.push(eq(ordersTable.source, params.data.source));
-
   if (conditions.length > 0) query = query.where(and(...conditions));
 
   const orders = await query.orderBy(ordersTable.createdAt);
@@ -69,46 +73,30 @@ router.post("/orders", async (req, res): Promise<void> => {
     return;
   }
 
-  // Try to assign a key immediately
-  const availableKeys = await db
-    .select()
-    .from(licenseKeysTable)
-    .where(and(eq(licenseKeysTable.productId, parsed.data.productId), eq(licenseKeysTable.status, "available")))
-    .limit(1);
+  // Create pending order
+  const [newOrder] = await db.insert(ordersTable).values({
+    source: "manual",
+    status: "pending",
+    buyerEmail: parsed.data.buyerEmail,
+    buyerName: parsed.data.buyerName,
+    productId: parsed.data.productId,
+    quantity: 1,
+  }).returning();
 
-  let newOrder;
+  // Fulfill immediately
+  const result = await fulfillOrder({
+    orderId: newOrder.id,
+    productId: parsed.data.productId,
+    buyerEmail: parsed.data.buyerEmail,
+    buyerName: parsed.data.buyerName,
+  });
 
-  if (availableKeys.length > 0) {
-    const key = availableKeys[0];
-    [newOrder] = await db.insert(ordersTable).values({
-      source: "manual",
-      status: "fulfilled",
-      buyerEmail: parsed.data.buyerEmail,
-      buyerName: parsed.data.buyerName,
-      productId: parsed.data.productId,
-      assignedKeyId: key.id,
-      assignedKeyValue: key.keyValue,
-      fulfilledAt: new Date(),
-    }).returning();
-
-    await db.update(licenseKeysTable).set({
-      status: "assigned",
-      orderId: newOrder.id,
-      assignedAt: new Date(),
-    }).where(eq(licenseKeysTable.id, key.id));
-  } else {
-    [newOrder] = await db.insert(ordersTable).values({
-      source: "manual",
-      status: "failed",
-      buyerEmail: parsed.data.buyerEmail,
-      buyerName: parsed.data.buyerName,
-      productId: parsed.data.productId,
-      failureReason: "No available keys",
-    }).returning();
+  if (!result.success) {
+    await db.update(ordersTable).set({ status: "failed", failureReason: result.error }).where(eq(ordersTable.id, newOrder.id));
   }
 
-  const formatted = await formatOrder(newOrder);
-  res.status(201).json(formatted);
+  const final = await db.select().from(ordersTable).where(eq(ordersTable.id, newOrder.id)).limit(1);
+  res.status(201).json(await formatOrder(final[0]));
 });
 
 router.get("/orders/:id", async (req, res): Promise<void> => {
@@ -124,7 +112,6 @@ router.get("/orders/:id", async (req, res): Promise<void> => {
     res.status(404).json({ error: "Order not found" });
     return;
   }
-
   res.json(await formatOrder(rows[0]));
 });
 
@@ -136,14 +123,63 @@ router.post("/orders/:id/fulfill", async (req, res): Promise<void> => {
     return;
   }
 
-  const result = await fulfillOrderById(params.data.id);
+  const rows = await db.select().from(ordersTable).where(eq(ordersTable.id, params.data.id)).limit(1);
+  if (rows.length === 0) {
+    res.status(404).json({ error: "Order not found" });
+    return;
+  }
+
+  const order = rows[0];
+  const result = await fulfillOrder({
+    orderId: order.id,
+    productId: order.productId,
+    buyerEmail: order.buyerEmail,
+    buyerName: order.buyerName,
+  });
+
   if (!result.success) {
     res.status(400).json({ error: result.error });
     return;
   }
 
+  const updated = await db.select().from(ordersTable).where(eq(ordersTable.id, params.data.id)).limit(1);
+  res.json(await formatOrder(updated[0]));
+});
+
+router.post("/orders/:id/resend-email", async (req, res): Promise<void> => {
+  const raw = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+  const params = ResendOrderEmailParams.safeParse({ id: parseInt(raw, 10) });
+  if (!params.success) {
+    res.status(400).json({ error: params.error.message });
+    return;
+  }
+
   const rows = await db.select().from(ordersTable).where(eq(ordersTable.id, params.data.id)).limit(1);
-  res.json(await formatOrder(rows[0]));
+  if (rows.length === 0) {
+    res.status(404).json({ error: "Order not found" });
+    return;
+  }
+
+  const order = rows[0];
+  if (!order.assignedKeyValue) {
+    res.status(400).json({ error: "Order has no assigned key to send" });
+    return;
+  }
+
+  const products = await db.select().from(productsTable).where(eq(productsTable.id, order.productId)).limit(1);
+  const product = products[0];
+
+  const result = await sendLicenseEmail({
+    to: order.buyerEmail,
+    buyerName: order.buyerName,
+    productName: product?.name ?? "Your product",
+    keyValue: order.assignedKeyValue,
+    orderId: order.id,
+    purchaseDate: order.fulfilledAt ?? order.createdAt,
+    emailTemplate: product?.emailTemplate,
+  });
+
+  res.json({ success: result.success, error: result.error ?? null });
 });
 
 export default router;

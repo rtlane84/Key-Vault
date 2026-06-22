@@ -1,6 +1,8 @@
 import { Link, useLocation } from "wouter";
-import { Package, ShoppingCart, ListTree, Activity, Settings } from "lucide-react";
+import { Package, ShoppingCart, ListTree, Activity, Settings, LogOut } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { clearToken, isAuthenticated } from "@/lib/auth";
+import { Button } from "@/components/ui/button";
 
 export function Sidebar() {
   const [location] = useLocation();
@@ -12,6 +14,11 @@ export function Sidebar() {
     { label: "Logs", href: "/logs", icon: ListTree },
     { label: "eBay Sync", href: "/ebay", icon: Settings },
   ];
+
+  function handleSignOut() {
+    clearToken();
+    window.location.href = "/login";
+  }
 
   return (
     <aside className="w-64 bg-card border-r border-border h-screen flex flex-col fixed left-0 top-0">
@@ -38,8 +45,19 @@ export function Sidebar() {
           );
         })}
       </nav>
-      <div className="p-4 border-t border-border">
-        <div className="text-xs text-muted-foreground font-mono">v1.0.4-rc2</div>
+      <div className="p-4 border-t border-border space-y-3">
+        {isAuthenticated() && (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="w-full justify-start text-muted-foreground hover:text-foreground gap-2 px-2"
+            onClick={handleSignOut}
+          >
+            <LogOut className="h-4 w-4" />
+            Sign out
+          </Button>
+        )}
+        <div className="text-xs text-muted-foreground font-mono px-2">v1.0.5-rc1</div>
       </div>
     </aside>
   );

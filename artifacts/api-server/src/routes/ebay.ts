@@ -3,6 +3,7 @@ import { eq } from "drizzle-orm";
 import { db, ebaySettingsTable, syncLogsTable } from "@workspace/db";
 import { runMockSync, runRealEbaySync } from "../lib/ebay-sync";
 import { logger } from "../lib/logger";
+import { UpdateEbayPollSettingsBody } from "@workspace/api-zod";
 
 const router: IRouter = Router();
 
@@ -42,16 +43,12 @@ router.get("/ebay/status", async (_req, res): Promise<void> => {
 
 router.get("/ebay/connect", async (_req, res): Promise<void> => {
   if (!EBAY_CLIENT_ID) {
-    // Mock mode — return a placeholder URL
-    res.json({
-      url: "#mock-mode-no-ebay-credentials",
-    });
+    res.json({ url: "#mock-mode-no-ebay-credentials" });
     return;
   }
 
   const state = Math.random().toString(36).slice(2);
   const url = `https://auth.ebay.com/oauth2/authorize?client_id=${encodeURIComponent(EBAY_CLIENT_ID)}&response_type=code&redirect_uri=${encodeURIComponent(EBAY_REDIRECT_URI)}&scope=${encodeURIComponent(EBAY_SCOPES)}&state=${state}`;
-
   res.json({ url });
 });
 
@@ -72,7 +69,6 @@ router.get("/ebay/callback", async (req, res): Promise<void> => {
   }
 
   try {
-    // Exchange code for tokens
     const credentials = Buffer.from(`${EBAY_CLIENT_ID}:${process.env.EBAY_CLIENT_SECRET}`).toString("base64");
     const tokenRes = await fetch("https://api.ebay.com/identity/v1/oauth2/token", {
       method: "POST",
@@ -102,7 +98,6 @@ router.get("/ebay/callback", async (req, res): Promise<void> => {
 
     const expiresAt = new Date(Date.now() + tokens.expires_in * 1000);
 
-    // Get seller ID
     let sellerId: string | undefined;
     try {
       const identityRes = await fetch("https://api.ebay.com/commerce/identity/v1/user/", {
@@ -116,7 +111,6 @@ router.get("/ebay/callback", async (req, res): Promise<void> => {
       logger.warn("Could not fetch eBay seller identity");
     }
 
-    // Upsert settings
     const existing = await db.select().from(ebaySettingsTable).limit(1);
     if (existing.length > 0) {
       await db.update(ebaySettingsTable).set({
@@ -187,6 +181,36 @@ router.post("/ebay/mock-sync", async (req, res): Promise<void> => {
     req.log.error({ err }, "Mock sync failed");
     res.status(500).json({ error: message });
   }
+});
+
+router.get("/ebay/poll-settings", async (_req, res): Promise<void> => {
+  const settings = await db.select().from(ebaySettingsTable).limit(1);
+  if (settings.length === 0) {
+    res.json({ pollIntervalMinutes: 0 });
+    return;
+  }
+  res.json({ pollIntervalMinutes: settings[0].pollIntervalMinutes });
+});
+
+router.patch("/ebay/poll-settings", async (req, res): Promise<void> => {
+  const parsed = UpdateEbayPollSettingsBody.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.message });
+    return;
+  }
+
+  const existing = await db.select().from(ebaySettingsTable).limit(1);
+  if (existing.length > 0) {
+    await db.update(ebaySettingsTable)
+      .set({ pollIntervalMinutes: parsed.data.pollIntervalMinutes })
+      .where(eq(ebaySettingsTable.id, existing[0].id));
+  } else {
+    await db.insert(ebaySettingsTable).values({
+      pollIntervalMinutes: parsed.data.pollIntervalMinutes,
+    });
+  }
+
+  res.json({ pollIntervalMinutes: parsed.data.pollIntervalMinutes });
 });
 
 export default router;

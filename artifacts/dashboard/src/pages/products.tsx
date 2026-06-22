@@ -15,10 +15,15 @@ import {
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 
+function slugify(name: string): string {
+  return name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
+}
+
 function AddProductDialog() {
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
   const [sku, setSku] = useState("");
+  const [price, setPrice] = useState("");
   const [ebayListingId, setEbayListingId] = useState("");
   const [description, setDescription] = useState("");
   const queryClient = useQueryClient();
@@ -29,12 +34,19 @@ function AddProductDialog() {
     e.preventDefault();
     try {
       await createProduct.mutateAsync({
-        data: { name, sku, ebayListingId: ebayListingId || undefined, description: description || undefined },
+        data: {
+          name,
+          sku,
+          slug: slugify(name),
+          price: parseFloat(price),
+          ebayListingId: ebayListingId || undefined,
+          description: description || undefined,
+        },
       });
       toast({ title: "Product created" });
       queryClient.invalidateQueries({ queryKey: getListProductsQueryKey() });
       setOpen(false);
-      setName(""); setSku(""); setEbayListingId(""); setDescription("");
+      setName(""); setSku(""); setPrice(""); setEbayListingId(""); setDescription("");
     } catch {
       toast({ title: "Failed to create product", variant: "destructive" });
     }
@@ -57,6 +69,10 @@ function AddProductDialog() {
           <div className="space-y-1">
             <Label htmlFor="sku">SKU</Label>
             <Input id="sku" value={sku} onChange={e => setSku(e.target.value)} required placeholder="WIN-PRO-2024" />
+          </div>
+          <div className="space-y-1">
+            <Label htmlFor="price">Price (USD)</Label>
+            <Input id="price" type="number" min="0" step="0.01" value={price} onChange={e => setPrice(e.target.value)} required placeholder="29.99" />
           </div>
           <div className="space-y-1">
             <Label htmlFor="listing">eBay Listing ID</Label>

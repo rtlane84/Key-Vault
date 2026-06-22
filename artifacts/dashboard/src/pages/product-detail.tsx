@@ -25,11 +25,11 @@ export default function ProductDetailPage() {
   const [keysBulk, setKeysBulk] = useState("");
 
   const { data: product, isLoading: productLoading } = useGetProduct(productId, {
-    query: { enabled: !!productId },
+    query: { enabled: !!productId, queryKey: getGetProductQueryKey(productId) },
   });
   const { data: keys, isLoading: keysLoading } = useListKeys(
     { productId },
-    { query: { enabled: !!productId } }
+    { query: { enabled: !!productId, queryKey: getListKeysQueryKey({ productId }) } }
   );
 
   const queryClient = useQueryClient();

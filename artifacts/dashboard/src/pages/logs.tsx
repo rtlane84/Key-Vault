@@ -61,13 +61,13 @@ export default function LogsPage() {
                       {format(new Date(log.createdAt), "MMM d, HH:mm:ss")}
                     </td>
                     <td className="px-4 py-2.5">
-                      <Badge className={`text-xs border ${levelColor[log.level] ?? ""}`}>
+                      <Badge className={`text-xs border ${levelColor[log.level ?? "info"] ?? ""}`}>
                         {log.level}
                       </Badge>
                     </td>
                     <td className="px-4 py-2.5">
                       <span className="text-xs font-mono text-muted-foreground">
-                        {eventLabels[log.event] ?? log.event}
+                        {eventLabels[log.event ?? ""] ?? log.event}
                       </span>
                     </td>
                     <td className="px-4 py-2.5">{log.message}</td>

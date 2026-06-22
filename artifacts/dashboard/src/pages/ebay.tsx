@@ -57,7 +57,7 @@ export default function EbayPage() {
 
   const handleDisconnect = async () => {
     try {
-      await disconnect.mutateAsync({});
+      await disconnect.mutateAsync();
       toast({ title: "eBay account disconnected" });
       queryClient.invalidateQueries({ queryKey: getGetEbayStatusQueryKey() });
       queryClient.invalidateQueries({ queryKey: getListSyncLogsQueryKey() });
@@ -68,7 +68,7 @@ export default function EbayPage() {
 
   const handleSync = async () => {
     try {
-      const result = await syncEbay.mutateAsync({});
+      const result = await syncEbay.mutateAsync();
       toast({ title: `Sync complete — ${result.keysAssigned} keys assigned` });
       queryClient.invalidateQueries({ queryKey: getGetEbayStatusQueryKey() });
       queryClient.invalidateQueries({ queryKey: getListSyncLogsQueryKey() });
@@ -80,7 +80,7 @@ export default function EbayPage() {
 
   const handleMockSync = async () => {
     try {
-      const result = await syncMock.mutateAsync({});
+      const result = await syncMock.mutateAsync();
       toast({ title: `Mock sync complete — ${result.keysAssigned} keys assigned, ${result.skipped} skipped` });
       queryClient.invalidateQueries({ queryKey: getGetEbayStatusQueryKey() });
       queryClient.invalidateQueries({ queryKey: getListSyncLogsQueryKey() });
@@ -199,7 +199,7 @@ export default function EbayPage() {
             <div className="divide-y divide-border">
               {logs.map((log) => (
                 <div key={log.id} className="px-4 py-3 flex items-start gap-3">
-                  <span className={`text-xs font-mono font-semibold uppercase w-10 flex-shrink-0 mt-0.5 ${levelColor[log.level] ?? "text-muted-foreground"}`}>
+                  <span className={`text-xs font-mono font-semibold uppercase w-10 flex-shrink-0 mt-0.5 ${levelColor[log.level ?? "info"] ?? "text-muted-foreground"}`}>
                     {log.level}
                   </span>
                   <div className="flex-1 min-w-0">

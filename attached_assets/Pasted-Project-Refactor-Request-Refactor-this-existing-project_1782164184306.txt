@@ -1,0 +1,519 @@
+Project Refactor Request
+
+Refactor this existing project into a production-ready single-user digital product and license key fulfillment platform.
+
+The goal is to sell digital products and license keys through:
+
+* My own website
+* eBay
+
+and automatically deliver license keys after successful payment.
+
+The application should be deployable to:
+
+* Vercel
+* Supabase PostgreSQL
+* Stripe
+* Resend
+
+Replit should only be used for development and testing.
+
+⸻
+
+Core Requirements
+
+Convert the current project into a single-user application.
+
+Remove:
+
+* Multi-tenancy
+* SaaS subscriptions
+* Team/organization features
+* Customer account management unless required for checkout
+* Replit-specific deployment assumptions
+
+Keep:
+
+* Product management
+* License key inventory
+* Order management
+* Fulfillment logs
+* Admin dashboard
+* eBay integration architecture
+* Duplicate fulfillment protection
+
+Refactor existing code whenever possible instead of rebuilding from scratch.
+
+⸻
+
+Deployment Architecture
+
+Frontend:
+
+* Next.js preferred (if migration is reasonable)
+* Otherwise keep existing architecture and make Vercel compatible
+
+Database:
+
+* Supabase PostgreSQL
+
+ORM:
+
+* Drizzle ORM (preferred if already used)
+
+Payments:
+
+* Stripe Checkout
+
+Email:
+
+* Resend
+
+Authentication:
+
+* Single admin user
+
+Hosting:
+
+* Vercel
+
+⸻
+
+Product Management
+
+The application database should be the source of truth for products.
+
+Admin should be able to:
+
+* Create product
+* Edit product
+* Disable product
+* Delete product
+
+Product fields:
+
+* Name
+* Slug
+* Description
+* Short Description
+* Price
+* SKU
+* Image URL
+* Active/Inactive
+* Category
+* Stripe Product ID
+* Stripe Price ID
+* eBay Listing Mapping
+* Email Template
+* Low Inventory Threshold
+
+Public storefront should display active products.
+
+Each product should have:
+
+* Product page
+* Buy button
+* Checkout flow
+
+⸻
+
+Shared Inventory
+
+License key inventory must be shared across all sales channels.
+
+Example:
+
+Website sale:
+
+* Uses inventory from Product A
+
+eBay sale:
+
+* Uses inventory from Product A
+
+Both sales channels consume keys from the same inventory pool.
+
+Never allow the same key to be delivered twice.
+
+⸻
+
+License Key Management
+
+Admin should be able to:
+
+* Add keys manually
+* Bulk upload keys
+* View inventory
+* Search inventory
+
+Key statuses:
+
+* Unused
+* Assigned
+* Delivered
+* Failed
+
+Track:
+
+* Assigned customer
+* Assigned order
+* Assigned date
+* Delivery date
+
+Dashboard should show:
+
+* Total keys
+* Remaining keys
+* Low inventory warnings
+
+⸻
+
+Storefront
+
+Public storefront should include:
+
+* Home page
+* Product catalog
+* Product pages
+* Checkout button
+
+Products should load from database.
+
+No hardcoded products.
+
+⸻
+
+Stripe Integration
+
+Use Stripe Checkout.
+
+Admin workflow:
+
+1. Create product in Stripe
+2. Create price in Stripe
+3. Copy Stripe Price ID into product
+
+Customer workflow:
+
+1. Click Buy
+2. Redirect to Stripe Checkout
+3. Pay
+4. Return to success page
+
+Stripe Webhooks:
+
+Create webhook endpoint.
+
+On successful payment:
+
+* Verify webhook signature
+* Create order
+* Match product
+* Assign next unused key
+* Mark key assigned
+* Email customer
+* Create fulfillment log
+* Prevent duplicate fulfillment
+
+Handle Stripe webhook retries safely.
+
+⸻
+
+Email Delivery
+
+Use Resend.
+
+Email should contain:
+
+* Product name
+* License key
+* Purchase date
+* Support information
+
+Allow custom email templates per product.
+
+Admin should be able to:
+
+* Re-send license email
+* Preview email template
+
+⸻
+
+Orders
+
+Track all orders.
+
+Fields:
+
+* Order Number
+* Customer Email
+* Product
+* Quantity
+* Source
+* Payment Status
+* Fulfillment Status
+* License Key Assigned
+* Created Date
+* Fulfilled Date
+
+Order sources:
+
+* Website
+* eBay
+
+Statuses:
+
+* Pending
+* Paid
+* Fulfilled
+* Failed
+* Refunded
+
+⸻
+
+eBay Integration
+
+Keep eBay fulfillment optional.
+
+Use eBay API credentials from environment variables.
+
+Support:
+
+* Sandbox
+* Production
+
+⸻
+
+eBay Listings Management
+
+Create an eBay Listings page.
+
+Allow:
+
+* Connect eBay account
+* Import listings
+* Refresh listings
+* View listing details
+
+Store:
+
+* Listing ID
+* Title
+* SKU
+* Price
+* Quantity
+* Status
+
+Display imported listings in admin dashboard.
+
+⸻
+
+Product Mapping
+
+Products should have internal SKUs.
+
+eBay listings should be mapped using SKU whenever possible.
+
+Automatic Mapping:
+
+If:
+
+eBay SKU = WIN11PRO
+
+and
+
+Product SKU = WIN11PRO
+
+Automatically map them.
+
+If no match exists:
+
+Mark listing as Unmapped.
+
+Allow manual mapping override.
+
+Allow remapping anytime.
+
+⸻
+
+eBay Order Fulfillment
+
+Poll eBay for:
+
+* Paid orders
+* Unfulfilled orders
+
+Fulfillment process:
+
+1. Detect order
+2. Match product
+3. Assign key
+4. Mark key assigned
+5. Email customer
+6. Create order record
+7. Create fulfillment log
+8. Prevent duplicates
+
+Matching priority:
+
+1. SKU match
+2. Manual mapping
+3. Listing ID mapping
+
+⸻
+
+eBay Polling Configuration
+
+Create configurable polling.
+
+Options:
+
+* Disabled
+* 1 minute
+* 2 minutes
+* 5 minutes
+* 10 minutes
+* 15 minutes
+
+Store polling interval in database.
+
+Support environment variable fallback:
+
+EBAY_POLL_INTERVAL_MINUTES
+
+Polling service should be isolated into its own module.
+
+Future webhook support should be easy to add.
+
+⸻
+
+eBay Admin Controls
+
+Add buttons:
+
+* Sync Listings Now
+* Sync Orders Now
+* Retry Failed Fulfillment
+* Re-send License Email
+
+Views:
+
+* eBay Listings
+* Mapped Listings
+* Unmapped Listings
+* Recent Orders
+* Failed Fulfillments
+* Fulfillment Statistics
+
+⸻
+
+Admin Dashboard
+
+Create pages for:
+
+* Overview
+* Products
+* License Keys
+* Orders
+* Fulfillment Logs
+* Stripe Settings
+* eBay Settings
+* Email Settings
+* Store Settings
+
+Dashboard metrics:
+
+* Revenue
+* Orders Today
+* Orders This Month
+* Fulfillment Success Rate
+* Remaining Keys
+* Low Inventory Products
+
+⸻
+
+Admin Authentication
+
+Single admin account only.
+
+Environment variables:
+
+ADMIN_EMAIL
+ADMIN_PASSWORD
+
+Protect all admin routes.
+
+Use secure password hashing.
+
+Add optional future support for Supabase Auth.
+
+⸻
+
+Environment Variables
+
+Create a complete .env.example
+
+DATABASE_URL=
+
+NEXT_PUBLIC_APP_URL=
+
+STRIPE_SECRET_KEY=
+STRIPE_WEBHOOK_SECRET=
+
+RESEND_API_KEY=
+
+ADMIN_EMAIL=
+ADMIN_PASSWORD=
+
+EBAY_CLIENT_ID=
+EBAY_CLIENT_SECRET=
+EBAY_REFRESH_TOKEN=
+EBAY_POLL_INTERVAL_MINUTES=
+
+⸻
+
+Deployment Documentation
+
+Update README with:
+
+* Local development setup
+* Supabase setup
+* Stripe setup
+* Resend setup
+* eBay setup
+* Database migrations
+* Environment variables
+* Vercel deployment
+* Product creation
+* Adding license keys
+* Stripe product mapping
+* eBay listing mapping
+* Polling configuration
+
+⸻
+
+MVP Priority
+
+Build in this order:
+
+Phase 1:
+
+* Products
+* License Keys
+* Orders
+* Stripe Checkout
+* Resend Email Delivery
+
+Phase 2:
+
+* eBay Listings Sync
+* eBay Order Polling
+* Automatic Fulfillment
+
+Phase 3:
+
+* Reporting
+* Analytics
+* Advanced eBay Features
+
+Focus on creating a stable production-ready MVP first.

@@ -13,7 +13,6 @@ import {
   useCreateOrder,
   useFulfillOrder,
   getListOrdersQueryKey,
-  getDashboardStatsQueryKey,
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";

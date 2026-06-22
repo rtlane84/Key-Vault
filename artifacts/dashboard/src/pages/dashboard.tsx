@@ -19,7 +19,7 @@ export default function DashboardPage() {
 
   const handleSync = async () => {
     try {
-      await syncEbay.mutateAsync({});
+      await syncEbay.mutateAsync();
       toast({ title: "Sync initiated" });
       queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
     } catch (err) {
@@ -29,7 +29,7 @@ export default function DashboardPage() {
 
   const handleMockSync = async () => {
     try {
-      await syncMock.mutateAsync({});
+      await syncMock.mutateAsync();
       toast({ title: "Mock sync completed" });
       queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
     } catch (err) {

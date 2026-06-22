@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { eq, sql } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { db, productsTable, licenseKeysTable } from "@workspace/db";
 import {
   CreateProductBody,
@@ -11,27 +11,35 @@ import {
 
 const router: IRouter = Router();
 
+async function formatProduct(p: typeof productsTable.$inferSelect) {
+  const allKeys = await db.select().from(licenseKeysTable).where(eq(licenseKeysTable.productId, p.id));
+  const availableKeyCount = allKeys.filter((k) => k.status === "available").length;
+  return {
+    id: p.id,
+    name: p.name,
+    slug: p.slug,
+    sku: p.sku,
+    description: p.description ?? null,
+    shortDescription: p.shortDescription ?? null,
+    price: p.price,
+    imageUrl: p.imageUrl ?? null,
+    category: p.category ?? null,
+    active: p.active,
+    stripeProductId: p.stripeProductId ?? null,
+    stripePriceId: p.stripePriceId ?? null,
+    ebayListingId: p.ebayListingId ?? null,
+    emailTemplate: p.emailTemplate ?? null,
+    lowInventoryThreshold: p.lowInventoryThreshold,
+    availableKeyCount,
+    totalKeyCount: allKeys.length,
+    createdAt: p.createdAt.toISOString(),
+  };
+}
+
 router.get("/products", async (_req, res): Promise<void> => {
   const products = await db.select().from(productsTable).orderBy(productsTable.name);
-
-  const withCounts = await Promise.all(
-    products.map(async (p) => {
-      const allKeys = await db.select().from(licenseKeysTable).where(eq(licenseKeysTable.productId, p.id));
-      const availableKeyCount = allKeys.filter((k) => k.status === "available").length;
-      return {
-        id: p.id,
-        name: p.name,
-        sku: p.sku,
-        ebayListingId: p.ebayListingId ?? null,
-        description: p.description ?? null,
-        availableKeyCount,
-        totalKeyCount: allKeys.length,
-        createdAt: p.createdAt.toISOString(),
-      };
-    })
-  );
-
-  res.json(withCounts);
+  const result = await Promise.all(products.map(formatProduct));
+  res.json(result);
 });
 
 router.post("/products", async (req, res): Promise<void> => {
@@ -41,21 +49,8 @@ router.post("/products", async (req, res): Promise<void> => {
     return;
   }
 
-  const [product] = await db
-    .insert(productsTable)
-    .values(parsed.data)
-    .returning();
-
-  res.status(201).json({
-    id: product.id,
-    name: product.name,
-    sku: product.sku,
-    ebayListingId: product.ebayListingId ?? null,
-    description: product.description ?? null,
-    availableKeyCount: 0,
-    totalKeyCount: 0,
-    createdAt: product.createdAt.toISOString(),
-  });
+  const [product] = await db.insert(productsTable).values(parsed.data).returning();
+  res.status(201).json(await formatProduct(product));
 });
 
 router.get("/products/:id", async (req, res): Promise<void> => {
@@ -71,20 +66,7 @@ router.get("/products/:id", async (req, res): Promise<void> => {
     res.status(404).json({ error: "Product not found" });
     return;
   }
-  const p = rows[0];
-  const allKeys = await db.select().from(licenseKeysTable).where(eq(licenseKeysTable.productId, p.id));
-  const availableKeyCount = allKeys.filter((k) => k.status === "available").length;
-
-  res.json({
-    id: p.id,
-    name: p.name,
-    sku: p.sku,
-    ebayListingId: p.ebayListingId ?? null,
-    description: p.description ?? null,
-    availableKeyCount,
-    totalKeyCount: allKeys.length,
-    createdAt: p.createdAt.toISOString(),
-  });
+  res.json(await formatProduct(rows[0]));
 });
 
 router.patch("/products/:id", async (req, res): Promise<void> => {
@@ -111,20 +93,7 @@ router.patch("/products/:id", async (req, res): Promise<void> => {
     res.status(404).json({ error: "Product not found" });
     return;
   }
-  const p = rows[0];
-  const allKeys = await db.select().from(licenseKeysTable).where(eq(licenseKeysTable.productId, p.id));
-  const availableKeyCount = allKeys.filter((k) => k.status === "available").length;
-
-  res.json({
-    id: p.id,
-    name: p.name,
-    sku: p.sku,
-    ebayListingId: p.ebayListingId ?? null,
-    description: p.description ?? null,
-    availableKeyCount,
-    totalKeyCount: allKeys.length,
-    createdAt: p.createdAt.toISOString(),
-  });
+  res.json(await formatProduct(rows[0]));
 });
 
 router.delete("/products/:id", async (req, res): Promise<void> => {
@@ -140,7 +109,6 @@ router.delete("/products/:id", async (req, res): Promise<void> => {
     res.status(404).json({ error: "Product not found" });
     return;
   }
-
   res.sendStatus(204);
 });
 

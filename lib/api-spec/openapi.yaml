@@ -2,22 +2,28 @@ openapi: 3.1.0
 info:
   # Do not change the title, if the title changes, the import paths will be broken
   title: Api
-  version: 0.1.0
-  description: eBay License Key Delivery API
+  version: 0.2.0
+  description: License Key Delivery API
 servers:
   - url: /api
     description: Base API path
 tags:
   - name: health
     description: Health operations
+  - name: auth
+    description: Admin authentication
   - name: products
     description: Product management
   - name: keys
     description: License key management
   - name: orders
     description: Order management
+  - name: stripe
+    description: Stripe payments
   - name: ebay
     description: eBay integration
+  - name: ebay-listings
+    description: eBay listings management
   - name: sync-logs
     description: Sync activity logs
   - name: dashboard
@@ -37,7 +43,29 @@ paths:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
 
-  # Products
+  # Auth
+  /auth/login:
+    post:
+      operationId: adminLogin
+      tags: [auth]
+      summary: Admin login
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginInput"
+      responses:
+        "200":
+          description: JWT token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LoginResult"
+        "401":
+          description: Invalid credentials
+
+  # Products (admin)
   /products:
     get:
       operationId: listProducts
@@ -69,6 +97,21 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Product"
+
+  /products/public:
+    get:
+      operationId: listPublicProducts
+      tags: [products]
+      summary: List active products (public, no auth)
+      responses:
+        "200":
+          description: Active products for storefront
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/PublicProduct"
 
   /products/{id}:
     get:
@@ -131,6 +174,27 @@ paths:
         "404":
           description: Not found
 
+  /products/{slug}/by-slug:
+    get:
+      operationId: getProductBySlug
+      tags: [products]
+      summary: Get a public product by slug (no auth)
+      parameters:
+        - name: slug
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Product
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PublicProduct"
+        "404":
+          description: Not found
+
   # License Keys
   /keys:
     get:
@@ -146,7 +210,7 @@ paths:
           in: query
           schema:
             type: string
-            enum: [available, assigned, failed]
+            enum: [available, assigned, delivered, failed]
       responses:
         "200":
           description: List of keys
@@ -221,12 +285,12 @@ paths:
           in: query
           schema:
             type: string
-            enum: [pending, fulfilled, failed]
+            enum: [pending, paid, fulfilled, failed, refunded]
         - name: source
           in: query
           schema:
             type: string
-            enum: [manual, ebay]
+            enum: [manual, ebay, stripe]
       responses:
         "200":
           description: List of orders
@@ -296,6 +360,62 @@ paths:
         "404":
           description: Not found
 
+  /orders/{id}/resend-email:
+    post:
+      operationId: resendOrderEmail
+      tags: [orders]
+      summary: Re-send the license key email for a fulfilled order
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Email sent
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ResendEmailResult"
+        "404":
+          description: Not found
+        "400":
+          description: Order not fulfilled
+
+  # Stripe
+  /stripe/checkout:
+    post:
+      operationId: createCheckoutSession
+      tags: [stripe]
+      summary: Create a Stripe Checkout session for a product
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CheckoutInput"
+      responses:
+        "200":
+          description: Checkout URL
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CheckoutResult"
+        "404":
+          description: Product not found
+        "400":
+          description: Product has no Stripe Price ID
+
+  /stripe/webhook:
+    post:
+      operationId: stripeWebhook
+      tags: [stripe]
+      summary: Stripe webhook endpoint (raw body)
+      responses:
+        "200":
+          description: Acknowledged
+
   # eBay integration
   /ebay/status:
     get:
@@ -361,6 +481,97 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/SyncResult"
+
+  /ebay/poll-settings:
+    get:
+      operationId: getEbayPollSettings
+      tags: [ebay]
+      summary: Get eBay polling configuration
+      responses:
+        "200":
+          description: Poll settings
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EbayPollSettings"
+    patch:
+      operationId: updateEbayPollSettings
+      tags: [ebay]
+      summary: Update eBay polling interval
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EbayPollSettingsInput"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EbayPollSettings"
+
+  # eBay Listings
+  /ebay/listings:
+    get:
+      operationId: listEbayListings
+      tags: [ebay-listings]
+      summary: List imported eBay listings
+      parameters:
+        - name: mapped
+          in: query
+          schema:
+            type: boolean
+      responses:
+        "200":
+          description: eBay listings
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/EbayListing"
+
+  /ebay/listings/sync:
+    post:
+      operationId: syncEbayListings
+      tags: [ebay-listings]
+      summary: Import/refresh listings from eBay
+      responses:
+        "200":
+          description: Sync result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EbayListingSyncResult"
+
+  /ebay/listings/{id}/map:
+    patch:
+      operationId: mapEbayListing
+      tags: [ebay-listings]
+      summary: Map an eBay listing to a product
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EbayListingMapInput"
+      responses:
+        "200":
+          description: Updated listing
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EbayListing"
+        "404":
+          description: Not found
 
   # Sync logs
   /sync-logs:
@@ -437,20 +648,56 @@ components:
           type: string
       required: [status]
 
+    LoginInput:
+      type: object
+      required: [email, password]
+      properties:
+        email:
+          type: string
+        password:
+          type: string
+
+    LoginResult:
+      type: object
+      required: [token]
+      properties:
+        token:
+          type: string
+
     Product:
       type: object
-      required: [id, name, sku, ebayListingId, availableKeyCount, totalKeyCount, createdAt]
+      required: [id, name, slug, sku, price, active, availableKeyCount, totalKeyCount, createdAt]
       properties:
         id:
           type: integer
         name:
           type: string
+        slug:
+          type: string
         sku:
           type: string
-        ebayListingId:
-          type: ["string", "null"]
         description:
           type: ["string", "null"]
+        shortDescription:
+          type: ["string", "null"]
+        price:
+          type: integer
+        imageUrl:
+          type: ["string", "null"]
+        category:
+          type: ["string", "null"]
+        active:
+          type: boolean
+        stripeProductId:
+          type: ["string", "null"]
+        stripePriceId:
+          type: ["string", "null"]
+        ebayListingId:
+          type: ["string", "null"]
+        emailTemplate:
+          type: ["string", "null"]
+        lowInventoryThreshold:
+          type: integer
         availableKeyCount:
           type: integer
         totalKeyCount:
@@ -458,20 +705,68 @@ components:
         createdAt:
           type: string
 
+    PublicProduct:
+      type: object
+      required: [id, name, slug, price, availableKeyCount]
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        slug:
+          type: string
+        description:
+          type: ["string", "null"]
+        shortDescription:
+          type: ["string", "null"]
+        price:
+          type: integer
+        imageUrl:
+          type: ["string", "null"]
+        category:
+          type: ["string", "null"]
+        stripePriceId:
+          type: ["string", "null"]
+        availableKeyCount:
+          type: integer
+
     ProductInput:
       type: object
-      required: [name, sku]
+      required: [name, slug, sku, price]
       properties:
         name:
+          type: string
+          minLength: 1
+        slug:
           type: string
           minLength: 1
         sku:
           type: string
           minLength: 1
-        ebayListingId:
-          type: string
         description:
           type: string
+        shortDescription:
+          type: string
+        price:
+          type: integer
+          minimum: 0
+        imageUrl:
+          type: string
+        category:
+          type: string
+        active:
+          type: boolean
+        stripeProductId:
+          type: string
+        stripePriceId:
+          type: string
+        ebayListingId:
+          type: string
+        emailTemplate:
+          type: string
+        lowInventoryThreshold:
+          type: integer
+          minimum: 0
 
     ProductUpdate:
       type: object
@@ -479,12 +774,34 @@ components:
         name:
           type: string
           minLength: 1
+        slug:
+          type: string
         sku:
           type: string
-        ebayListingId:
-          type: ["string", "null"]
         description:
           type: ["string", "null"]
+        shortDescription:
+          type: ["string", "null"]
+        price:
+          type: integer
+          minimum: 0
+        imageUrl:
+          type: ["string", "null"]
+        category:
+          type: ["string", "null"]
+        active:
+          type: boolean
+        stripeProductId:
+          type: ["string", "null"]
+        stripePriceId:
+          type: ["string", "null"]
+        ebayListingId:
+          type: ["string", "null"]
+        emailTemplate:
+          type: ["string", "null"]
+        lowInventoryThreshold:
+          type: integer
+          minimum: 0
 
     LicenseKey:
       type: object
@@ -498,10 +815,12 @@ components:
           type: string
         status:
           type: string
-          enum: [available, assigned, failed]
+          enum: [available, assigned, delivered, failed]
         orderId:
           type: ["integer", "null"]
         assignedAt:
+          type: ["string", "null"]
+        deliveredAt:
           type: ["string", "null"]
         createdAt:
           type: string
@@ -546,10 +865,10 @@ components:
           type: integer
         source:
           type: string
-          enum: [manual, ebay]
+          enum: [manual, ebay, stripe]
         status:
           type: string
-          enum: [pending, fulfilled, failed]
+          enum: [pending, paid, fulfilled, failed, refunded]
         buyerEmail:
           type: string
         buyerName:
@@ -558,9 +877,15 @@ components:
           type: integer
         productName:
           type: ["string", "null"]
+        quantity:
+          type: integer
         ebayOrderId:
           type: ["string", "null"]
         ebayLineItemId:
+          type: ["string", "null"]
+        stripePaymentIntentId:
+          type: ["string", "null"]
+        stripeSessionId:
           type: ["string", "null"]
         assignedKeyId:
           type: ["integer", "null"]
@@ -584,6 +909,33 @@ components:
         productId:
           type: integer
 
+    CheckoutInput:
+      type: object
+      required: [productId]
+      properties:
+        productId:
+          type: integer
+        successUrl:
+          type: string
+        cancelUrl:
+          type: string
+
+    CheckoutResult:
+      type: object
+      required: [url]
+      properties:
+        url:
+          type: string
+
+    ResendEmailResult:
+      type: object
+      required: [success]
+      properties:
+        success:
+          type: boolean
+        error:
+          type: ["string", "null"]
+
     EbayStatus:
       type: object
       required: [connected, mockMode]
@@ -598,6 +950,8 @@ components:
           type: ["string", "null"]
         lastSyncAt:
           type: ["string", "null"]
+        pollIntervalMinutes:
+          type: integer
 
     EbayConnectUrl:
       type: object
@@ -605,6 +959,66 @@ components:
       properties:
         url:
           type: string
+
+    EbayPollSettings:
+      type: object
+      required: [pollIntervalMinutes]
+      properties:
+        pollIntervalMinutes:
+          type: integer
+
+    EbayPollSettingsInput:
+      type: object
+      required: [pollIntervalMinutes]
+      properties:
+        pollIntervalMinutes:
+          type: integer
+          enum: [0, 1, 2, 5, 10, 15]
+
+    EbayListing:
+      type: object
+      required: [id, listingId, title, status, quantity, createdAt]
+      properties:
+        id:
+          type: integer
+        listingId:
+          type: string
+        title:
+          type: string
+        sku:
+          type: ["string", "null"]
+        price:
+          type: ["integer", "null"]
+        quantity:
+          type: integer
+        status:
+          type: string
+        productId:
+          type: ["integer", "null"]
+        productName:
+          type: ["string", "null"]
+        lastSyncAt:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+
+    EbayListingSyncResult:
+      type: object
+      required: [imported, updated, total]
+      properties:
+        imported:
+          type: integer
+        updated:
+          type: integer
+        total:
+          type: integer
+
+    EbayListingMapInput:
+      type: object
+      required: [productId]
+      properties:
+        productId:
+          type: ["integer", "null"]
 
     SyncResult:
       type: object
@@ -633,7 +1047,6 @@ components:
           type: integer
         event:
           type: string
-          enum: [sync_started, sync_completed, order_processed, key_assigned, key_send_failed, no_key_available, duplicate_skipped, oauth_connected, oauth_disconnected]
         level:
           type: string
           enum: [info, warn, error]
@@ -683,7 +1096,7 @@ components:
           type: string
         type:
           type: string
-          enum: [no_keys, failed_order, connection_lost]
+          enum: [no_keys, low_keys, failed_order, connection_lost]
         message:
           type: string
         severity:
