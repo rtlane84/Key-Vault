@@ -224,6 +224,8 @@ export interface Order {
   /** @nullable */
   ebayLineItemId?: string | null;
   /** @nullable */
+  ebayFulfillmentId?: string | null;
+  /** @nullable */
   stripePaymentIntentId?: string | null;
   /** @nullable */
   stripeSessionId?: string | null;
@@ -235,6 +237,8 @@ export interface Order {
   failureReason?: string | null;
   /** @nullable */
   fulfilledAt?: string | null;
+  /** @nullable */
+  ebayMarkedAt?: string | null;
   createdAt: string;
 }
 

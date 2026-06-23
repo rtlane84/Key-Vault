@@ -27,6 +27,7 @@ export const ordersTable = pgTable("orders", {
   fulfilledAt: timestamp("fulfilled_at", { withTimezone: true }),
   emailSentAt: timestamp("email_sent_at", { withTimezone: true }),
   ebayMarkedAt: timestamp("ebay_marked_at", { withTimezone: true }),
+  ebayFulfillmentId: text("ebay_fulfillment_id"),
   failureReason: text("failure_reason"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),

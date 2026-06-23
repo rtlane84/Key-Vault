@@ -415,12 +415,14 @@ export const ListOrdersResponseItem = zod.object({
   "quantity": zod.number().optional(),
   "ebayOrderId": zod.string().nullish(),
   "ebayLineItemId": zod.string().nullish(),
+  "ebayFulfillmentId": zod.string().nullish(),
   "stripePaymentIntentId": zod.string().nullish(),
   "stripeSessionId": zod.string().nullish(),
   "assignedKeyId": zod.number().nullish(),
   "assignedKeyValue": zod.string().nullish(),
   "failureReason": zod.string().nullish(),
   "fulfilledAt": zod.string().nullish(),
+  "ebayMarkedAt": zod.string().nullish(),
   "createdAt": zod.string()
 })
 export const ListOrdersResponse = zod.array(ListOrdersResponseItem)
@@ -454,12 +456,14 @@ export const GetOrderResponse = zod.object({
   "quantity": zod.number().optional(),
   "ebayOrderId": zod.string().nullish(),
   "ebayLineItemId": zod.string().nullish(),
+  "ebayFulfillmentId": zod.string().nullish(),
   "stripePaymentIntentId": zod.string().nullish(),
   "stripeSessionId": zod.string().nullish(),
   "assignedKeyId": zod.number().nullish(),
   "assignedKeyValue": zod.string().nullish(),
   "failureReason": zod.string().nullish(),
   "fulfilledAt": zod.string().nullish(),
+  "ebayMarkedAt": zod.string().nullish(),
   "createdAt": zod.string()
 })
 
@@ -482,12 +486,14 @@ export const FulfillOrderResponse = zod.object({
   "quantity": zod.number().optional(),
   "ebayOrderId": zod.string().nullish(),
   "ebayLineItemId": zod.string().nullish(),
+  "ebayFulfillmentId": zod.string().nullish(),
   "stripePaymentIntentId": zod.string().nullish(),
   "stripeSessionId": zod.string().nullish(),
   "assignedKeyId": zod.number().nullish(),
   "assignedKeyValue": zod.string().nullish(),
   "failureReason": zod.string().nullish(),
   "fulfilledAt": zod.string().nullish(),
+  "ebayMarkedAt": zod.string().nullish(),
   "createdAt": zod.string()
 })
 

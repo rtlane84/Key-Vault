@@ -215,10 +215,14 @@ export async function fulfillOrder(input: FulfillmentInput): Promise<Fulfillment
     let ebayMarked = false;
     if (order.source === "ebay" && order.ebayOrderId) {
       if (emailResult.success) {
-        ebayMarked = await markOrderAsFulfilledOnEbay(order.ebayOrderId, orderId, order.tenantId);
+        const ebayResult = await markOrderAsFulfilledOnEbay(order.ebayOrderId, orderId, order.tenantId);
+        ebayMarked = ebayResult.success;
         if (ebayMarked) {
           await db.update(ordersTable)
-            .set({ ebayMarkedAt: new Date() })
+            .set({ 
+              ebayMarkedAt: new Date(),
+              ebayFulfillmentId: ebayResult.fulfillmentId || null 
+            })
             .where(eq(ordersTable.id, orderId));
         } else {
           // Logged inside markOrderAsFulfilledOnEbay

@@ -1119,6 +1119,8 @@ components:
           type: ["string", "null"]
         ebayLineItemId:
           type: ["string", "null"]
+        ebayFulfillmentId:
+          type: ["string", "null"]
         stripePaymentIntentId:
           type: ["string", "null"]
         stripeSessionId:
@@ -1130,6 +1132,8 @@ components:
         failureReason:
           type: ["string", "null"]
         fulfilledAt:
+          type: ["string", "null"]
+        ebayMarkedAt:
           type: ["string", "null"]
         createdAt:
           type: string

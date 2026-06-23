@@ -239,4 +239,15 @@ router.patch("/ebay/poll-settings", async (req, res): Promise<void> => {
   res.json({ pollIntervalMinutes: parsed.data.pollIntervalMinutes });
 });
 
+router.post("/ebay/webhooks", async (req, res): Promise<void> => {
+  // eBay Marketplace Account Deletion (Required for GDPR/Privacy)
+  // Or MarketPlace Notifications
+  logger.info({ body: req.body }, "eBay webhook received");
+
+  // TODO: Implement notification signature verification and order processing
+  // This is a placeholder for future real-time fulfillment via eBay webhooks
+
+  res.status(200).send("OK");
+});
+
 export default router;
