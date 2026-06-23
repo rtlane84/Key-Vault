@@ -52,23 +52,72 @@ function Router() {
   return (
     <Switch>
       <Route path="/login" component={LoginPage} />
+      
       <Route path="/">
-        {() => (
+        <ProtectedRoute component={() => (
           <AppLayout>
-            <Switch>
-              <Route path="/" component={() => <ProtectedRoute component={DashboardPage} />} />
-              <Route path="/products" component={() => <ProtectedRoute component={ProductsPage} />} />
-              <Route path="/products/:id" component={() => <ProtectedRoute component={ProductDetailPage} />} />
-              <Route path="/orders" component={() => <ProtectedRoute component={OrdersPage} />} />
-              <Route path="/ebay" component={() => <ProtectedRoute component={EbayPage} />} />
-              <Route path="/ebay/listings" component={() => <ProtectedRoute component={EbayListingsPage} />} />
-              <Route path="/ebay/orders" component={() => <ProtectedRoute component={EbayOrdersPage} />} />
-              <Route path="/logs" component={() => <ProtectedRoute component={LogsPage} />} />
-              <Route component={NotFound} />
-            </Switch>
+            <DashboardPage />
           </AppLayout>
-        )}
+        )} />
       </Route>
+
+      <Route path="/products">
+        <ProtectedRoute component={() => (
+          <AppLayout>
+            <ProductsPage />
+          </AppLayout>
+        )} />
+      </Route>
+
+      <Route path="/products/:id">
+        <ProtectedRoute component={() => (
+          <AppLayout>
+            <ProductDetailPage />
+          </AppLayout>
+        )} />
+      </Route>
+
+      <Route path="/orders">
+        <ProtectedRoute component={() => (
+          <AppLayout>
+            <OrdersPage />
+          </AppLayout>
+        )} />
+      </Route>
+
+      <Route path="/ebay">
+        <ProtectedRoute component={() => (
+          <AppLayout>
+            <EbayPage />
+          </AppLayout>
+        )} />
+      </Route>
+
+      <Route path="/ebay/listings">
+        <ProtectedRoute component={() => (
+          <AppLayout>
+            <EbayListingsPage />
+          </AppLayout>
+        )} />
+      </Route>
+
+      <Route path="/ebay/orders">
+        <ProtectedRoute component={() => (
+          <AppLayout>
+            <EbayOrdersPage />
+          </AppLayout>
+        )} />
+      </Route>
+
+      <Route path="/logs">
+        <ProtectedRoute component={() => (
+          <AppLayout>
+            <LogsPage />
+          </AppLayout>
+        )} />
+      </Route>
+
+      <Route component={NotFound} />
     </Switch>
   );
 }
