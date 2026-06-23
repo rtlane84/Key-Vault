@@ -94,6 +94,7 @@ router.get("/ebay/callback", async (req, res): Promise<void> => {
       access_token: string;
       refresh_token: string;
       expires_in: number;
+      refresh_token_expires_in: number;
     };
 
     const expiresAt = new Date(Date.now() + tokens.expires_in * 1000);

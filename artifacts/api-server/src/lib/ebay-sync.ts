@@ -3,6 +3,63 @@ import { eq, and, isNull } from "drizzle-orm";
 import { logger } from "./logger";
 import { fulfillOrder } from "./fulfillment";
 
+const EBAY_CLIENT_ID = process.env.EBAY_CLIENT_ID ?? "";
+const EBAY_CLIENT_SECRET = process.env.EBAY_CLIENT_SECRET ?? "";
+const EBAY_REDIRECT_URI = process.env.EBAY_REDIRECT_URI ?? "";
+
+export async function refreshEbayToken(): Promise<string> {
+  const settings = await db.select().from(ebaySettingsTable).limit(1);
+  if (settings.length === 0 || !settings[0].refreshToken) {
+    throw new Error("eBay account not connected or refresh token missing.");
+  }
+
+  const s = settings[0];
+  
+  // If token is still valid for more than 5 minutes, return it
+  if (s.accessToken && s.tokenExpiresAt && s.tokenExpiresAt.getTime() > Date.now() + 5 * 60 * 1000) {
+    return s.accessToken;
+  }
+
+  if (!EBAY_CLIENT_ID || !EBAY_CLIENT_SECRET) {
+    throw new Error("eBay credentials not configured (EBAY_CLIENT_ID/EBAY_CLIENT_SECRET)");
+  }
+
+  logger.info("Refreshing eBay access token...");
+  const credentials = Buffer.from(`${EBAY_CLIENT_ID}:${EBAY_CLIENT_SECRET}`).toString("base64");
+  
+  const response = await fetch("https://api.ebay.com/identity/v1/oauth2/token", {
+    method: "POST",
+    headers: {
+      Authorization: `Basic ${credentials}`,
+      "Content-Type": "application/x-www-form-urlencoded",
+    },
+    body: new URLSearchParams({
+      grant_type: "refresh_token",
+      refresh_token: s.refreshToken || "",
+    }),
+  });
+
+  if (!response.ok) {
+    const text = await response.text();
+    logger.error({ status: response.status, body: text }, "eBay token refresh failed");
+    throw new Error(`eBay token refresh failed: ${response.status}`);
+  }
+
+  const tokens = await response.json() as {
+    access_token: string;
+    expires_in: number;
+  };
+
+  const expiresAt = new Date(Date.now() + tokens.expires_in * 1000);
+
+  await db.update(ebaySettingsTable).set({
+    accessToken: tokens.access_token,
+    tokenExpiresAt: expiresAt,
+  }).where(eq(ebaySettingsTable.id, s.id));
+
+  return tokens.access_token;
+}
+
 export interface MockEbayOrder {
   ebayOrderId: string;
   ebayLineItemId: string;
@@ -102,10 +159,23 @@ async function processOrder(order: {
 
   // Match product by SKU or listing ID
   let product = null;
-  if (order.sku) {
+  
+  // 1. Try matching by listing ID via ebayListingsTable (preferred for manual mapping)
+  if (order.ebayListingId) {
+    const rows = await db.select().from(ebayListingsTable).where(eq(ebayListingsTable.listingId, order.ebayListingId)).limit(1);
+    if (rows[0]?.productId) {
+      const pRows = await db.select().from(productsTable).where(eq(productsTable.id, rows[0].productId)).limit(1);
+      product = pRows[0] ?? null;
+    }
+  }
+
+  // 2. Try matching by SKU directly in productsTable
+  if (!product && order.sku) {
     const rows = await db.select().from(productsTable).where(eq(productsTable.sku, order.sku)).limit(1);
     product = rows[0] ?? null;
   }
+
+  // 3. Try matching by Listing ID directly in productsTable (legacy support)
   if (!product && order.ebayListingId) {
     const rows = await db.select().from(productsTable).where(eq(productsTable.ebayListingId, order.ebayListingId)).limit(1);
     product = rows[0] ?? null;
@@ -278,17 +348,10 @@ export async function runMockSync(): Promise<SyncResult> {
 }
 
 export async function runRealEbaySync(): Promise<SyncResult> {
+  const accessToken = await refreshEbayToken();
+
   const settings = await db.select().from(ebaySettingsTable).limit(1);
-  if (settings.length === 0 || !settings[0].accessToken) {
-    throw new Error("eBay account not connected. Please connect your eBay account first.");
-  }
-
   const s = settings[0];
-
-  // Check if token is expired
-  if (s.tokenExpiresAt && s.tokenExpiresAt < new Date()) {
-    throw new Error("eBay access token has expired. Please reconnect your eBay account.");
-  }
 
   logger.info("Starting real eBay sync");
   await logEvent({ event: "sync_started", level: "info", message: "Real eBay sync started" });
@@ -311,7 +374,7 @@ export async function runRealEbaySync(): Promise<SyncResult> {
       `https://api.ebay.com/sell/fulfillment/v1/order?filter=${encodeURIComponent(filter)}&limit=200`,
       {
         headers: {
-          Authorization: `Bearer ${s.accessToken}`,
+          Authorization: `Bearer ${accessToken}`,
           "Content-Type": "application/json",
         },
       }
@@ -326,17 +389,18 @@ export async function runRealEbaySync(): Promise<SyncResult> {
         const lineItems = (ebayOrder.lineItems as Array<Record<string, unknown>>) ?? [];
         for (const lineItem of lineItems) {
           try {
-            const buyerEmail = (ebayOrder.buyer as Record<string, string>)?.username ?? "";
+            const buyerEmail = (ebayOrder.buyer as Record<string, string>)?.email || (ebayOrder.buyer as Record<string, string>)?.username || "";
+            const buyerName = (ebayOrder.buyer as Record<string, string>)?.username || "";
             const ebayOrderId = ebayOrder.orderId as string;
             const ebayLineItemId = lineItem.lineItemId as string;
             const sku = lineItem.sku as string | undefined;
-            const listingId = (lineItem.listingMarketplaceId ?? lineItem.legacyItemId) as string | undefined;
+            const listingId = (lineItem.legacyItemId || lineItem.listingMarketplaceId) as string | undefined;
 
             const res = await processOrder({
               ebayOrderId,
               ebayLineItemId,
               buyerEmail,
-              buyerName: "",
+              buyerName,
               sku,
               ebayListingId: listingId,
             });
@@ -370,11 +434,7 @@ export async function runRealEbaySync(): Promise<SyncResult> {
 
   // 2. Sync Listings (Inventory API)
   try {
-    if (s.accessToken) {
-      await syncEbayListings(s.accessToken);
-    } else {
-      logger.warn("Skipping eBay listing sync: No access token available");
-    }
+    await syncEbayListings(accessToken);
   } catch (err) {
     logger.error({ err }, "eBay Listing sync failed");
     result.errors.push("Listing sync failed");

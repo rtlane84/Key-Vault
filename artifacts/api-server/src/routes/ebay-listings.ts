@@ -110,11 +110,9 @@ router.post("/ebay/listings/sync", async (req, res): Promise<void> => {
 
   // Real eBay listings sync via Inventory API
   try {
-    const result = await runRealEbaySync();
-    // runRealEbaySync now returns both order sync results AND listing sync results if we want,
-    // but I added the listing sync at the end of it.
-    // Wait, I should probably have made a separate function for listings.
-    // Let me check what I did.
+    const { refreshEbayToken, syncEbayListings } = await import("../lib/ebay-sync");
+    const accessToken = await refreshEbayToken();
+    const result = await syncEbayListings(accessToken);
     res.json(result);
   } catch (err) {
     logger.error({ err }, "Real eBay listing sync failed");
