@@ -1,15 +1,17 @@
 import { Router, type IRouter } from "express";
-import { eq } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 import { db, productsTable, licenseKeysTable, ordersTable, syncLogsTable, ebaySettingsTable } from "@workspace/db";
 
 const router: IRouter = Router();
 
-router.get("/dashboard/stats", async (_req, res): Promise<void> => {
+router.get("/dashboard/stats", async (req, res): Promise<void> => {
+  const tenantId = (req as any).tenantId;
+
   const [products, keys, orders, settings] = await Promise.all([
-    db.select().from(productsTable),
-    db.select().from(licenseKeysTable),
-    db.select().from(ordersTable),
-    db.select().from(ebaySettingsTable).limit(1),
+    db.select().from(productsTable).where(eq(productsTable.tenantId, tenantId)),
+    db.select().from(licenseKeysTable).where(eq(licenseKeysTable.tenantId, tenantId)),
+    db.select().from(ordersTable).where(eq(ordersTable.tenantId, tenantId)),
+    db.select().from(ebaySettingsTable).where(eq(ebaySettingsTable.tenantId, tenantId)).limit(1),
   ]);
 
   const availableKeys = keys.filter((k) => k.status === "available").length;
@@ -33,7 +35,8 @@ router.get("/dashboard/stats", async (_req, res): Promise<void> => {
   });
 });
 
-router.get("/dashboard/alerts", async (_req, res): Promise<void> => {
+router.get("/dashboard/alerts", async (req, res): Promise<void> => {
+  const tenantId = (req as any).tenantId;
   const alerts: Array<{
     id: string;
     type: string;
@@ -45,12 +48,17 @@ router.get("/dashboard/alerts", async (_req, res): Promise<void> => {
   }> = [];
 
   // Products with no available keys
-  const products = await db.select().from(productsTable);
+  const products = await db.select().from(productsTable).where(eq(productsTable.tenantId, tenantId));
   for (const p of products) {
     const availableKeys = await db
       .select()
       .from(licenseKeysTable)
-      .where(eq(licenseKeysTable.productId, p.id))
+      .where(
+        and(
+          eq(licenseKeysTable.productId, p.id),
+          eq(licenseKeysTable.tenantId, tenantId)
+        )
+      )
       .then((keys) => keys.filter((k) => k.status === "available"));
 
     if (availableKeys.length === 0) {
@@ -67,7 +75,12 @@ router.get("/dashboard/alerts", async (_req, res): Promise<void> => {
   }
 
   // Failed orders
-  const failedOrders = await db.select().from(ordersTable).where(eq(ordersTable.status, "failed"));
+  const failedOrders = await db.select().from(ordersTable).where(
+    and(
+      eq(ordersTable.status, "failed"),
+      eq(ordersTable.tenantId, tenantId)
+    )
+  );
   for (const o of failedOrders) {
     alerts.push({
       id: `failed_order_${o.id}`,
@@ -83,10 +96,12 @@ router.get("/dashboard/alerts", async (_req, res): Promise<void> => {
   res.json(alerts);
 });
 
-router.get("/dashboard/recent-activity", async (_req, res): Promise<void> => {
+router.get("/dashboard/recent-activity", async (req, res): Promise<void> => {
+  const tenantId = (req as any).tenantId;
   const logs = await db
     .select()
     .from(syncLogsTable)
+    .where(eq(syncLogsTable.tenantId, tenantId))
     .orderBy(syncLogsTable.createdAt)
     .limit(20)
     .then((rows) => rows.reverse());
