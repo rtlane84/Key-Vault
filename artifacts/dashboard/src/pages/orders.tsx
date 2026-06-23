@@ -29,6 +29,7 @@ function StatusBadge({ status }: { status: string }) {
 
 function SourceBadge({ source }: { source: string }) {
   if (source === "ebay") return <Badge className="bg-yellow-500/10 text-yellow-500 border-yellow-500/20 border text-xs">eBay</Badge>;
+  if (source === "stripe") return <Badge className="bg-purple-500/10 text-purple-500 border-purple-500/20 border text-xs">Stripe</Badge>;
   return <Badge variant="outline" className="text-xs">Manual</Badge>;
 }
 
@@ -105,9 +106,9 @@ export default function OrdersPage() {
   const { toast } = useToast();
   const fulfillOrder = useFulfillOrder();
 
-  const params: { status?: "pending" | "fulfilled" | "failed"; source?: "manual" | "ebay" } = {};
+  const params: { status?: "pending" | "fulfilled" | "failed"; source?: "manual" | "ebay" | "stripe" } = {};
   if (statusFilter !== "all") params.status = statusFilter as "pending" | "fulfilled" | "failed";
-  if (sourceFilter !== "all") params.source = sourceFilter as "manual" | "ebay";
+  if (sourceFilter !== "all") params.source = sourceFilter as "manual" | "ebay" | "stripe";
 
   const { data: orders, isLoading } = useListOrders(Object.keys(params).length ? params : undefined);
 
@@ -149,6 +150,7 @@ export default function OrdersPage() {
           <SelectContent>
             <SelectItem value="all">All sources</SelectItem>
             <SelectItem value="ebay">eBay</SelectItem>
+            <SelectItem value="stripe">Stripe</SelectItem>
             <SelectItem value="manual">Manual</SelectItem>
           </SelectContent>
         </Select>

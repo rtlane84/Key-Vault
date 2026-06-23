@@ -63,6 +63,24 @@ The following environment variables are required for the production environment:
 4. Configure the environment variables (especially `VITE_API_URL` pointing to your Railway API).
 5. Deploy.
 
+## Local Testing with Stripe CLI
+
+To test the Stripe checkout and webhook flow locally:
+
+1. **Install Stripe CLI:** [Follow official instructions](https://stripe.com/docs/stripe-cli).
+2. **Login:** `stripe login`
+3. **Forward Webhooks:** Start forwarding webhooks to your local API server:
+   ```bash
+   stripe listen --forward-to localhost:5001/api/stripe/webhook
+   ```
+4. **Configure Webhook Secret:** Copy the `whsec_...` secret from the CLI output and add it to your `.env` file as `STRIPE_WEBHOOK_SECRET`.
+5. **Create a Test Product:** In the Dashboard, create a product and ensure it has a valid Stripe Price ID (from your Stripe Dashboard in test mode).
+6. **Trigger Payment:** 
+   - Open the storefront product page.
+   - Click "Buy Now".
+   - Complete the Stripe checkout with a test card (e.g., `4242...`).
+7. **Verify Fulfillment:** Check the API server logs and the Dashboard "Logs" page to confirm the order was created, a key was assigned, and an email was sent.
+
 ## Railway Configuration (`railway.json`)
 
 ```json

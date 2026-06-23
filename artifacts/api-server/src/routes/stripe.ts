@@ -1,6 +1,6 @@
 import { Router, type IRouter, type Request, type Response } from "express";
-import { eq } from "drizzle-orm";
-import { db, productsTable, ordersTable } from "@workspace/db";
+import { eq, and } from "drizzle-orm";
+import { db, productsTable, ordersTable, licenseKeysTable } from "@workspace/db";
 import { getStripe } from "../lib/stripe-client";
 import { fulfillOrder } from "../lib/fulfillment";
 import { logger } from "../lib/logger";
@@ -24,21 +24,38 @@ router.post("/stripe/checkout", async (req, res): Promise<void> => {
     return;
   }
   const product = products[0];
+  
+  const availableKeys = await db
+    .select()
+    .from(licenseKeysTable)
+    .where(and(eq(licenseKeysTable.productId, productId), eq(licenseKeysTable.status, "available")))
+    .limit(1);
+
+  if (availableKeys.length === 0) {
+    res.status(400).json({ error: "Product is out of stock" });
+    return;
+  }
 
   if (!product.active) {
     res.status(400).json({ error: "Product is not available" });
     return;
   }
 
-  if (!product.stripePriceId) {
-    res.status(400).json({ error: "Product has no Stripe Price ID configured" });
-    return;
-  }
-
   const stripe = getStripe();
   const session = await stripe.checkout.sessions.create({
     mode: "payment",
-    line_items: [{ price: product.stripePriceId, quantity: 1 }],
+    line_items: [{
+      price_data: {
+        currency: "usd",
+        product_data: {
+          name: product.name,
+          description: product.description ?? undefined,
+          images: product.imageUrl ? [product.imageUrl] : undefined,
+        },
+        unit_amount: product.price,
+      },
+      quantity: 1,
+    }],
     success_url: successUrl ?? `${appUrl}/success?session_id={CHECKOUT_SESSION_ID}`,
     cancel_url: cancelUrl ?? `${appUrl}/product/${product.slug}`,
     metadata: { productId: String(product.id), productSlug: product.slug },
