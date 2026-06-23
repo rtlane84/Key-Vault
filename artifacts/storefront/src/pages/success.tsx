@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react";
-import { useLocation } from "wouter";
+import { useLocation, useParams } from "wouter";
 import { CheckCircle2, Mail, ArrowRight, Zap, Package } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 export default function SuccessPage() {
+  const { tenantSlug } = useParams<{ tenantSlug?: string }>();
   const [, navigate] = useLocation();
   const [countdown, setCountdown] = useState(10);
 
@@ -15,12 +16,12 @@ export default function SuccessPage() {
   // Auto-redirect back to store after countdown
   useEffect(() => {
     if (countdown <= 0) {
-      navigate("/");
+      navigate(tenantSlug ? `/s/${tenantSlug}` : "/");
       return;
     }
     const t = setTimeout(() => setCountdown((c) => c - 1), 1000);
     return () => clearTimeout(t);
-  }, [countdown, navigate]);
+  }, [countdown, navigate, tenantSlug]);
 
   return (
     <div className="min-h-screen bg-background flex flex-col items-center justify-center px-4">
@@ -82,7 +83,7 @@ export default function SuccessPage() {
         )}
 
         <div className="mt-8 flex flex-col gap-3">
-          <Button size="lg" className="w-full" onClick={() => navigate("/")}>
+          <Button size="lg" className="w-full" onClick={() => navigate(tenantSlug ? `/s/${tenantSlug}` : "/")}>
             Back to Store
             <ArrowRight className="w-4 h-4 ml-2" />
           </Button>

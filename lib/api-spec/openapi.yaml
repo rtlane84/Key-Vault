@@ -117,6 +117,51 @@ paths:
               schema:
                 $ref: "#/components/schemas/Tenant"
 
+  # Public Storefront
+  /public/tenants/{slug}:
+    get:
+      operationId: getPublicTenant
+      tags: [auth]
+      summary: Get public tenant branding
+      parameters:
+        - name: slug
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Tenant branding
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PublicTenant"
+        "404":
+          description: Tenant not found
+
+  /public/tenants/{slug}/products:
+    get:
+      operationId: listTenantProducts
+      tags: [products]
+      summary: List public products for a tenant
+      parameters:
+        - name: slug
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: List of products
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/PublicProduct"
+        "404":
+          description: Tenant not found
+
   # Products (admin)
   /products:
     get:
@@ -820,6 +865,19 @@ components:
           type: ["string", "null"]
         availableKeyCount:
           type: integer
+
+    PublicTenant:
+      type: object
+      required: [id, name, slug]
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        slug:
+          type: string
+        supportEmail:
+          type: ["string", "null"]
 
     ProductInput:
       type: object

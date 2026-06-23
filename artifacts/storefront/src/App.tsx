@@ -18,8 +18,11 @@ function Router() {
   return (
     <Switch>
       <Route path="/" component={StorePage} />
+      <Route path="/s/:tenantSlug" component={StorePage} />
       <Route path="/product/:slug" component={ProductPage} />
+      <Route path="/s/:tenantSlug/product/:slug" component={ProductPage} />
       <Route path="/success" component={SuccessPage} />
+      <Route path="/s/:tenantSlug/success" component={SuccessPage} />
       <Route path="/lookup" component={LookupPage} />
       <Route component={NotFound} />
     </Switch>

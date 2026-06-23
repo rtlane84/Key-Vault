@@ -25,19 +25,40 @@ interface PublicProduct {
   availableKeyCount: number;
 }
 
+interface PublicTenant {
+  id: number;
+  name: string;
+  slug: string;
+  supportEmail: string | null;
+}
+
 function formatPrice(cents: number) {
   return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(cents / 100);
 }
 
 export default function ProductPage() {
-  const params = useParams<{ slug: string }>();
+  const { tenantSlug, slug: productSlug } = useParams<{ tenantSlug?: string; slug: string }>();
   const [, navigate] = useLocation();
 
+  const { data: tenant } = useQuery<PublicTenant | null>({
+    queryKey: ["/public/tenants", tenantSlug],
+    queryFn: async () => {
+      if (!tenantSlug) return null;
+      try {
+        return await customFetch<PublicTenant>(`/public/tenants/${tenantSlug}`);
+      } catch (err) {
+        console.error("Tenant not found", err);
+        return null;
+      }
+    },
+    enabled: !!tenantSlug,
+  });
+
   const { data: product, isLoading, error } = useQuery<PublicProduct>({
-    queryKey: ["product", params.slug],
+    queryKey: ["product", productSlug],
     queryFn: async () => {
       try {
-        return await customFetch<PublicProduct>(`/products/${encodeURIComponent(params.slug)}/by-slug`);
+        return await customFetch<PublicProduct>(`/products/${encodeURIComponent(productSlug)}/by-slug`);
       } catch (err: any) {
         if (err.status === 404) throw new Error("not_found");
         throw err;
@@ -50,12 +71,19 @@ export default function ProductPage() {
     mutationFn: async (productId: number) => {
       const origin = window.location.origin;
       const base = import.meta.env.BASE_URL.replace(/\/$/, "");
+      const successUrl = tenantSlug 
+        ? `${origin}${base}/s/${tenantSlug}/success?session_id={CHECKOUT_SESSION_ID}`
+        : `${origin}${base}/success?session_id={CHECKOUT_SESSION_ID}`;
+      const cancelUrl = tenantSlug
+        ? `${origin}${base}/s/${tenantSlug}/product/${productSlug}`
+        : `${origin}${base}/product/${productSlug}`;
+
       return customFetch<{ url: string }>("/stripe/checkout", {
         method: "POST",
         body: JSON.stringify({
           productId,
-          successUrl: `${origin}${base}/success?session_id={CHECKOUT_SESSION_ID}`,
-          cancelUrl: `${origin}${base}/product/${params.slug}`,
+          successUrl,
+          cancelUrl,
         }),
       });
     },
@@ -93,7 +121,7 @@ export default function ProductPage() {
           <Package className="w-12 h-12 mx-auto mb-4 text-muted-foreground/30" />
           <h1 className="text-xl font-semibold text-foreground mb-2">Product Not Found</h1>
           <p className="text-muted-foreground mb-6">This product doesn't exist or is no longer available.</p>
-          <Button variant="outline" onClick={() => navigate("/")}>
+          <Button variant="outline" onClick={() => navigate(tenantSlug ? `/s/${tenantSlug}` : "/")}>
             <ArrowLeft className="w-4 h-4 mr-2" />
             Back to Store
           </Button>
@@ -111,7 +139,7 @@ export default function ProductPage() {
       <header className="border-b border-border/60 bg-background/95 backdrop-blur-sm sticky top-0 z-40">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 h-16 flex items-center gap-4">
           <button
-            onClick={() => navigate("/")}
+            onClick={() => navigate(tenantSlug ? `/s/${tenantSlug}` : "/")}
             className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
           >
             <ArrowLeft className="w-4 h-4" />

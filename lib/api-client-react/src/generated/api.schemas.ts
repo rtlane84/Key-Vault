@@ -65,6 +65,14 @@ export interface PublicProduct {
   availableKeyCount: number;
 }
 
+export interface PublicTenant {
+  id: number;
+  name: string;
+  slug: string;
+  /** @nullable */
+  supportEmail?: string | null;
+}
+
 export interface ProductInput {
   /** @minLength 1 */
   name: string;

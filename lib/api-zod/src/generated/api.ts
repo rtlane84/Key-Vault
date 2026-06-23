@@ -84,6 +84,43 @@ export const UpdateMyTenantResponse = zod.object({
 
 
 /**
+ * @summary Get public tenant branding
+ */
+export const GetPublicTenantParams = zod.object({
+  "slug": zod.coerce.string()
+})
+
+export const GetPublicTenantResponse = zod.object({
+  "id": zod.number(),
+  "name": zod.string(),
+  "slug": zod.string(),
+  "supportEmail": zod.string().nullish()
+})
+
+
+/**
+ * @summary List public products for a tenant
+ */
+export const ListTenantProductsParams = zod.object({
+  "slug": zod.coerce.string()
+})
+
+export const ListTenantProductsResponseItem = zod.object({
+  "id": zod.number(),
+  "name": zod.string(),
+  "slug": zod.string(),
+  "description": zod.string().nullish(),
+  "shortDescription": zod.string().nullish(),
+  "price": zod.number(),
+  "imageUrl": zod.string().nullish(),
+  "category": zod.string().nullish(),
+  "stripePriceId": zod.string().nullish(),
+  "availableKeyCount": zod.number()
+})
+export const ListTenantProductsResponse = zod.array(ListTenantProductsResponseItem)
+
+
+/**
  * @summary List all products
  */
 export const ListProductsResponseItem = zod.object({

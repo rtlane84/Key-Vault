@@ -45,6 +45,7 @@ export * from './product';
 export * from './productInput';
 export * from './productUpdate';
 export * from './publicProduct';
+export * from './publicTenant';
 export * from './registerInput';
 export * from './registerResult';
 export * from './resendEmailResult';

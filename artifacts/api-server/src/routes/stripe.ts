@@ -72,7 +72,8 @@ router.post("/stripe/checkout", async (req, res): Promise<void> => {
         },
         unit_amount: product.price,
       },
-      quantity: 1,
+      quantity: 1, // Multi-quantity handled via quantity parameter in other routes? 
+                   // Keeping 1 for now as per original code here.
     }],
     success_url: successUrl ?? `${appUrl}/success?session_id={CHECKOUT_SESSION_ID}`,
     cancel_url: cancelUrl ?? `${appUrl}/product/${product.slug}`,

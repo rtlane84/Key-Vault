@@ -1,6 +1,6 @@
 import { setBaseUrl, customFetch } from "@workspace/api-client-react";
 import { useQuery } from "@tanstack/react-query";
-import { Link } from "wouter";
+import { Link, useParams } from "wouter";
 import { ShoppingCart, Package, Zap, Shield, ChevronRight } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -23,14 +23,22 @@ interface PublicProduct {
   availableKeyCount: number;
 }
 
+interface PublicTenant {
+  id: number;
+  name: string;
+  slug: string;
+  supportEmail: string | null;
+}
+
 function formatPrice(cents: number) {
   return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(cents / 100);
 }
 
-function ProductCard({ product }: { product: PublicProduct }) {
+function ProductCard({ product, tenantSlug }: { product: PublicProduct; tenantSlug?: string }) {
   const inStock = product.availableKeyCount > 0;
+  const href = tenantSlug ? `/s/${tenantSlug}/product/${product.slug}` : `/product/${product.slug}`;
   return (
-    <Link href={`/product/${product.slug}`}>
+    <Link href={href}>
       <div className="group relative flex flex-col bg-card border border-card-border rounded-xl overflow-hidden hover:border-primary/40 transition-all duration-200 cursor-pointer hover:shadow-lg hover:shadow-primary/5 hover:-translate-y-0.5">
         {/* Image */}
         <div className="relative aspect-video bg-muted flex items-center justify-center overflow-hidden">
@@ -112,24 +120,44 @@ function ProductCardSkeleton() {
 }
 
 export default function StorePage() {
-  const { data: products, isLoading, error } = useQuery<PublicProduct[]>({
-    queryKey: ["public-products"],
+  const { tenantSlug } = useParams<{ tenantSlug?: string }>();
+
+  const { data: tenant, isLoading: tenantLoading } = useQuery<PublicTenant | null>({
+    queryKey: ["/public/tenants", tenantSlug],
     queryFn: async () => {
-      return customFetch<PublicProduct[]>("/products/public");
+      if (!tenantSlug) return null;
+      try {
+        return await customFetch<PublicTenant>(`/public/tenants/${tenantSlug}`);
+      } catch (err) {
+        console.error("Tenant not found", err);
+        return null;
+      }
+    },
+    enabled: !!tenantSlug,
+  });
+
+  const { data: products, isLoading: productsLoading, error } = useQuery<PublicProduct[]>({
+    queryKey: tenantSlug ? ["/public/tenants", tenantSlug, "products"] : ["public-products"],
+    queryFn: async () => {
+      const url = tenantSlug ? `/public/tenants/${tenantSlug}/products` : "/products/public";
+      return customFetch<PublicProduct[]>(url);
     },
   });
+
+  const isLoading = productsLoading || (!!tenantSlug && tenantLoading);
+  const businessName = tenant?.name || "KeyVault";
 
   return (
     <div className="min-h-screen bg-background">
       {/* Header */}
       <header className="border-b border-border/60 bg-background/95 backdrop-blur-sm sticky top-0 z-40">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
-          <Link href="/">
+          <Link href={tenantSlug ? `/s/${tenantSlug}` : "/"}>
             <div className="flex items-center gap-2.5 cursor-pointer">
               <div className="w-8 h-8 rounded-lg bg-primary/10 border border-primary/20 flex items-center justify-center">
                 <Zap className="w-4 h-4 text-primary" />
               </div>
-              <span className="font-bold text-foreground tracking-tight">KeyVault</span>
+              <span className="font-bold text-foreground tracking-tight">{businessName}</span>
             </div>
           </Link>
           <div className="flex items-center gap-6">
@@ -208,7 +236,7 @@ export default function StorePage() {
               </div>
             ) : products && products.length > 0 ? (
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
-                {products.map((p) => <ProductCard key={p.id} product={p} />)}
+                {products.map((p) => <ProductCard key={p.id} product={p} tenantSlug={tenantSlug} />)}
               </div>
             ) : (
               <div className="text-center py-20 text-muted-foreground">
@@ -224,9 +252,14 @@ export default function StorePage() {
       {/* Footer */}
       <footer className="border-t border-border/40 mt-16">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 py-8 flex flex-col sm:flex-row items-center justify-between gap-4">
+          <div className="flex items-center gap-6">
+            {tenant?.supportEmail && (
+              <a href={`mailto:${tenant.supportEmail}`} className="text-sm text-muted-foreground hover:text-primary transition-colors">Support</a>
+            )}
+          </div>
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
             <Zap className="w-3.5 h-3.5 text-primary/60" />
-            <span className="font-medium text-foreground">KeyVault</span>
+            <span className="font-medium text-foreground">{businessName}</span>
             <span>— Instant digital delivery</span>
           </div>
           <p className="text-xs text-muted-foreground">All sales final. Keys delivered via email within minutes.</p>

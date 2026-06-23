@@ -49,6 +49,7 @@ import type {
   ProductInput,
   ProductUpdate,
   PublicProduct,
+  PublicTenant,
   RegisterInput,
   RegisterResult,
   ResendEmailResult,
@@ -438,6 +439,160 @@ export const useUpdateMyTenant = <TError = ErrorType<unknown>,
       > => {
       return useMutation(getUpdateMyTenantMutationOptions(options));
     }
+
+export const getGetPublicTenantUrl = (slug: string,) => {
+
+
+
+
+  return `/api/public/tenants/${slug}`
+}
+
+/**
+ * @summary Get public tenant branding
+ */
+export const getPublicTenant = async (slug: string, options?: RequestInit): Promise<PublicTenant> => {
+
+  return customFetch<PublicTenant>(getGetPublicTenantUrl(slug),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetPublicTenantQueryKey = (slug: string,) => {
+    return [
+    `/api/public/tenants/${slug}`
+    ] as const;
+    }
+
+
+export const getGetPublicTenantQueryOptions = <TData = Awaited<ReturnType<typeof getPublicTenant>>, TError = ErrorType<void>>(slug: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getPublicTenant>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetPublicTenantQueryKey(slug);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getPublicTenant>>> = ({ signal }) => getPublicTenant(slug, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(slug), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getPublicTenant>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetPublicTenantQueryResult = NonNullable<Awaited<ReturnType<typeof getPublicTenant>>>
+export type GetPublicTenantQueryError = ErrorType<void>
+
+
+/**
+ * @summary Get public tenant branding
+ */
+
+export function useGetPublicTenant<TData = Awaited<ReturnType<typeof getPublicTenant>>, TError = ErrorType<void>>(
+ slug: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getPublicTenant>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetPublicTenantQueryOptions(slug,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getListTenantProductsUrl = (slug: string,) => {
+
+
+
+
+  return `/api/public/tenants/${slug}/products`
+}
+
+/**
+ * @summary List public products for a tenant
+ */
+export const listTenantProducts = async (slug: string, options?: RequestInit): Promise<PublicProduct[]> => {
+
+  return customFetch<PublicProduct[]>(getListTenantProductsUrl(slug),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListTenantProductsQueryKey = (slug: string,) => {
+    return [
+    `/api/public/tenants/${slug}/products`
+    ] as const;
+    }
+
+
+export const getListTenantProductsQueryOptions = <TData = Awaited<ReturnType<typeof listTenantProducts>>, TError = ErrorType<void>>(slug: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listTenantProducts>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListTenantProductsQueryKey(slug);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listTenantProducts>>> = ({ signal }) => listTenantProducts(slug, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(slug), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listTenantProducts>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListTenantProductsQueryResult = NonNullable<Awaited<ReturnType<typeof listTenantProducts>>>
+export type ListTenantProductsQueryError = ErrorType<void>
+
+
+/**
+ * @summary List public products for a tenant
+ */
+
+export function useListTenantProducts<TData = Awaited<ReturnType<typeof listTenantProducts>>, TError = ErrorType<void>>(
+ slug: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listTenantProducts>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListTenantProductsQueryOptions(slug,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
 
 export const getListProductsUrl = () => {
 
