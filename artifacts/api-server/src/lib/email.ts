@@ -5,16 +5,11 @@ const RESEND_API_KEY = process.env.RESEND_API_KEY ?? "";
 const FROM_EMAIL = process.env.FROM_EMAIL ?? "delivery@yourdomain.com";
 const APP_NAME = process.env.APP_NAME ?? "Key Delivery";
 
-let resendClient: Resend | null = null;
-
 function getResend(): Resend {
-  if (!resendClient) {
-    if (!RESEND_API_KEY) {
-      throw new Error("RESEND_API_KEY is not set");
-    }
-    resendClient = new Resend(RESEND_API_KEY);
+  if (!RESEND_API_KEY) {
+    throw new Error("RESEND_API_KEY is not set. Cannot initialize Resend client.");
   }
-  return resendClient;
+  return new Resend(RESEND_API_KEY);
 }
 
 export interface SendLicenseEmailParams {
@@ -48,11 +43,6 @@ Best regards,
 {{appName}}`;
 
 export async function sendLicenseEmail(params: SendLicenseEmailParams): Promise<{ success: boolean; error?: string }> {
-  if (!RESEND_API_KEY) {
-    logger.warn("RESEND_API_KEY not set — skipping email send");
-    return { success: false, error: "Email service not configured" };
-  }
-
   const vars = {
     buyerName: params.buyerName ?? "Customer",
     productName: params.productName,
@@ -67,6 +57,19 @@ export async function sendLicenseEmail(params: SendLicenseEmailParams): Promise<
   };
 
   const bodyText = renderTemplate(params.emailTemplate ?? DEFAULT_TEMPLATE, vars);
+
+  if (!RESEND_API_KEY) {
+    logger.info("RESEND_API_KEY not set — SIMULATING email send");
+    logger.info(`
+------------------------------------------------------------
+SIMULATED EMAIL TO: ${params.to}
+SUBJECT: Your ${params.productName} License Key — Order #${params.orderId}
+BODY:
+${bodyText}
+------------------------------------------------------------
+    `);
+    return { success: true, error: "SIMULATED" };
+  }
 
   const htmlBody = `
 <!DOCTYPE html>

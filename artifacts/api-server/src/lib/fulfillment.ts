@@ -101,7 +101,9 @@ export async function fulfillOrder(input: FulfillmentInput): Promise<Fulfillment
     await db.update(licenseKeysTable).set({ status: "delivered", deliveredAt: new Date() }).where(eq(licenseKeysTable.id, key.id));
     await logEvent({
       event: "order_processed",
-      message: `Order #${orderId} fulfilled and email sent to ${buyerEmail}`,
+      message: emailResult.error === "SIMULATED" 
+        ? `Order #${orderId} fulfilled (EMAIL SIMULATED - Key: ${key.keyValue})`
+        : `Order #${orderId} fulfilled and email sent to ${buyerEmail}`,
       orderId,
       productId,
       keyId: key.id,
