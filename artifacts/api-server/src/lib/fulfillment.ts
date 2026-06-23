@@ -168,6 +168,7 @@ export async function fulfillOrder(input: FulfillmentInput): Promise<Fulfillment
       keyValue: keys.join("\n"), // If multi-quantity, send all keys
       orderId,
       purchaseDate: order.createdAt,
+      activationInstructions: product!.activationInstructions,
       emailTemplate: product!.emailTemplate,
     });
 

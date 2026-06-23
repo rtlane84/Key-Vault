@@ -10,6 +10,7 @@ import {
 } from "@workspace/api-zod";
 import { fulfillOrder } from "../lib/fulfillment";
 import { sendLicenseEmail } from "../lib/email";
+import { requireAuth } from "../lib/auth";
 
 const router: IRouter = Router();
 
@@ -40,6 +41,53 @@ async function formatOrder(o: typeof ordersTable.$inferSelect) {
     createdAt: o.createdAt.toISOString(),
   };
 }
+
+router.get("/orders/lookup", async (req, res): Promise<void> => {
+  const { email, reference } = req.query;
+  if (!email || !reference) {
+    res.status(400).json({ error: "Email and reference are required" });
+    return;
+  }
+
+  // Find all orders for this email
+  const results = await db.select().from(ordersTable).where(
+    eq(ordersTable.buyerEmail, email as string)
+  );
+
+  const found = results.find(o => 
+    String(o.id) === reference || 
+    o.stripeSessionId === reference || 
+    o.ebayOrderId === reference
+  );
+
+  if (!found) {
+    res.status(404).json({ error: "Order not found with provided email and reference" });
+    return;
+  }
+
+  const products = await db.select().from(productsTable).where(eq(productsTable.id, found.productId)).limit(1);
+  const product = products[0];
+
+  const keys = found.keys ? (JSON.parse(found.keys) as string[]) : (found.assignedKeyValue ? [found.assignedKeyValue] : null);
+
+  res.json({
+    status: found.status,
+    productName: product?.name ?? "Unknown Product",
+    quantity: found.quantity,
+    keys: found.status === 'fulfilled' ? keys : null,
+    activationInstructions: product?.activationInstructions ?? null,
+    fulfilledAt: found.fulfilledAt ? found.fulfilledAt.toISOString() : null,
+    createdAt: found.createdAt.toISOString(),
+  });
+});
+
+router.use((req, res, next) => {
+  // We only want to skip auth for the lookup route
+  if (req.path === "/orders/lookup") {
+    return next();
+  }
+  return requireAuth(req, res, next);
+});
 
 router.get("/orders", async (req, res): Promise<void> => {
   const params = ListOrdersQueryParams.safeParse(req.query);
@@ -172,6 +220,7 @@ router.post("/orders/:id/resend-email", async (req, res): Promise<void> => {
     keyValue: keysToResend,
     orderId: order.id,
     purchaseDate: order.fulfilledAt ?? order.createdAt,
+    activationInstructions: product?.activationInstructions,
     emailTemplate: product?.emailTemplate,
   });
 
@@ -196,6 +245,69 @@ router.post("/orders/:id/resend-email", async (req, res): Promise<void> => {
   }
 
   res.json({ success: result.success, error: result.error ?? null });
+});
+
+router.get("/orders/lookup", async (req, res): Promise<void> => {
+  const { email, reference } = req.query;
+  if (!email || !reference) {
+    res.status(400).json({ error: "Email and reference are required" });
+    return;
+  }
+
+  // Find order where email matches AND (id = reference OR stripeSessionId = reference OR ebayOrderId = reference)
+  // To avoid SQL injection and type issues, we handle id carefully
+  let orderId: number | undefined = undefined;
+  if (/^\d+$/.test(reference as string)) {
+    orderId = parseInt(reference as string, 10);
+  }
+
+  let query = db.select().from(ordersTable).where(eq(ordersTable.buyerEmail, email as string)).$dynamic();
+
+  const conditions = [];
+  if (orderId !== undefined) conditions.push(eq(ordersTable.id, orderId));
+  conditions.push(eq(ordersTable.stripeSessionId, reference as string));
+  conditions.push(eq(ordersTable.ebayOrderId, reference as string));
+
+  const rows = await query.where(and(
+    eq(ordersTable.buyerEmail, email as string),
+    // Use or for the references
+    // drizzle or condition
+  )).limit(1);
+  
+  // Refined query for lookup
+  const results = await db.select().from(ordersTable).where(
+    and(
+      eq(ordersTable.buyerEmail, email as string),
+      // We need to match one of the reference fields
+      // Using a manual approach for simplicity since it's just one row
+    )
+  );
+
+  const found = results.find(o => 
+    String(o.id) === reference || 
+    o.stripeSessionId === reference || 
+    o.ebayOrderId === reference
+  );
+
+  if (!found) {
+    res.status(404).json({ error: "Order not found with provided email and reference" });
+    return;
+  }
+
+  const products = await db.select().from(productsTable).where(eq(productsTable.id, found.productId)).limit(1);
+  const product = products[0];
+
+  const keys = found.keys ? (JSON.parse(found.keys) as string[]) : (found.assignedKeyValue ? [found.assignedKeyValue] : null);
+
+  res.json({
+    status: found.status,
+    productName: product?.name ?? "Unknown Product",
+    quantity: found.quantity,
+    keys: found.status === 'fulfilled' ? keys : null,
+    activationInstructions: product?.activationInstructions ?? null,
+    fulfilledAt: found.fulfilledAt ? found.fulfilledAt.toISOString() : null,
+    createdAt: found.createdAt.toISOString(),
+  });
 });
 
 export default router;

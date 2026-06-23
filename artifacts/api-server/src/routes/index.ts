@@ -17,12 +17,13 @@ const router: IRouter = Router();
 router.use(healthRouter);
 router.use(authRouter);
 router.use(publicProductsRouter); // storefront product endpoints
+router.use(ordersRouter); // Added ordersRouter here for public /orders/lookup
 
 // All routes below this line require a valid JWT
 router.use(requireAuth);
 router.use(productsRouter);
 router.use(keysRouter);
-router.use(ordersRouter);
+// router.use(ordersRouter); // Already added above, which has internal auth handling
 router.use(ebayRouter);
 router.use(ebayListingsRouter);
 router.use(dashboardRouter);

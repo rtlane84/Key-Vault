@@ -124,15 +124,25 @@ export default function StorePage() {
       {/* Header */}
       <header className="border-b border-border/60 bg-background/95 backdrop-blur-sm sticky top-0 z-40">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
-          <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-lg bg-primary/10 border border-primary/20 flex items-center justify-center">
-              <Zap className="w-4 h-4 text-primary" />
+          <Link href="/">
+            <div className="flex items-center gap-2.5 cursor-pointer">
+              <div className="w-8 h-8 rounded-lg bg-primary/10 border border-primary/20 flex items-center justify-center">
+                <Zap className="w-4 h-4 text-primary" />
+              </div>
+              <span className="font-bold text-foreground tracking-tight">KeyVault</span>
             </div>
-            <span className="font-bold text-foreground tracking-tight">KeyVault</span>
-          </div>
-          <div className="flex items-center gap-2 text-xs text-muted-foreground">
-            <Shield className="w-3.5 h-3.5" />
-            Instant delivery
+          </Link>
+          <div className="flex items-center gap-6">
+            <Link href="/lookup">
+              <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-primary gap-2">
+                <Package className="w-4 h-4" />
+                Track Order
+              </Button>
+            </Link>
+            <div className="hidden sm:flex items-center gap-2 text-xs text-muted-foreground">
+              <Shield className="w-3.5 h-3.5" />
+              Instant delivery
+            </div>
           </div>
         </div>
       </header>

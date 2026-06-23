@@ -21,6 +21,7 @@ interface PublicProduct {
   imageUrl: string | null;
   category: string | null;
   stripePriceId: string | null;
+  activationInstructions: string | null;
   availableKeyCount: number;
 }
 
@@ -165,8 +166,23 @@ export default function ProductPage() {
             {product.description && (
               <>
                 <Separator className="bg-border/60" />
-                <div className="prose prose-sm prose-invert max-w-none">
-                  <p className="text-sm text-muted-foreground leading-relaxed whitespace-pre-line">{product.description}</p>
+                <div className="space-y-3">
+                  <h3 className="text-sm font-semibold text-foreground uppercase tracking-wider">Product Details</h3>
+                  <div className="prose prose-sm prose-invert max-w-none">
+                    <p className="text-sm text-muted-foreground leading-relaxed whitespace-pre-line">{product.description}</p>
+                  </div>
+                </div>
+              </>
+            )}
+
+            {product.activationInstructions && (
+              <>
+                <Separator className="bg-border/60" />
+                <div className="space-y-3">
+                  <h3 className="text-sm font-semibold text-foreground uppercase tracking-wider">Activation Instructions</h3>
+                  <div className="p-4 rounded-lg bg-muted/40 border border-border/50 text-sm text-muted-foreground leading-relaxed whitespace-pre-line font-mono">
+                    {product.activationInstructions}
+                  </div>
                 </div>
               </>
             )}

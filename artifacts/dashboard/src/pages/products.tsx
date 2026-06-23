@@ -4,6 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Package, Plus, Key } from "lucide-react";
@@ -26,6 +27,8 @@ function AddProductDialog() {
   const [price, setPrice] = useState("");
   const [stripePriceId, setStripePriceId] = useState("");
   const [ebayListingId, setEbayListingId] = useState("");
+  const [imageUrl, setImageUrl] = useState("");
+  const [activationInstructions, setActivationInstructions] = useState("");
   const [description, setDescription] = useState("");
   const queryClient = useQueryClient();
   const { toast } = useToast();
@@ -42,13 +45,15 @@ function AddProductDialog() {
           price: parseFloat(price),
           stripePriceId: stripePriceId || undefined,
           ebayListingId: ebayListingId || undefined,
+          imageUrl: imageUrl || undefined,
+          activationInstructions: activationInstructions || undefined,
           description: description || undefined,
         },
       });
       toast({ title: "Product created" });
       queryClient.invalidateQueries({ queryKey: getListProductsQueryKey() });
       setOpen(false);
-      setName(""); setSku(""); setPrice(""); setStripePriceId(""); setEbayListingId(""); setDescription("");
+      setName(""); setSku(""); setPrice(""); setStripePriceId(""); setEbayListingId(""); setImageUrl(""); setActivationInstructions(""); setDescription("");
     } catch {
       toast({ title: "Failed to create product", variant: "destructive" });
     }
@@ -83,6 +88,20 @@ function AddProductDialog() {
           <div className="space-y-1">
             <Label htmlFor="listing">eBay Listing ID</Label>
             <Input id="listing" value={ebayListingId} onChange={e => setEbayListingId(e.target.value)} placeholder="123456789" />
+          </div>
+          <div className="space-y-1">
+            <Label htmlFor="imageUrl">Product Image URL</Label>
+            <Input id="imageUrl" value={imageUrl} onChange={e => setImageUrl(e.target.value)} placeholder="https://..." />
+          </div>
+          <div className="space-y-1">
+            <Label htmlFor="activation">Activation Instructions</Label>
+            <Textarea 
+              id="activation" 
+              value={activationInstructions} 
+              onChange={e => setActivationInstructions(e.target.value)} 
+              placeholder="How to use the key..."
+              rows={2}
+            />
           </div>
           <div className="space-y-1">
             <Label htmlFor="desc">Description</Label>

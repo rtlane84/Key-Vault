@@ -46,6 +46,7 @@ export const ListProductsResponseItem = zod.object({
   "stripeProductId": zod.string().nullish(),
   "stripePriceId": zod.string().nullish(),
   "ebayListingId": zod.string().nullish(),
+  "activationInstructions": zod.string().nullish(),
   "emailTemplate": zod.string().nullish(),
   "lowInventoryThreshold": zod.number().optional(),
   "availableKeyCount": zod.number(),
@@ -80,6 +81,7 @@ export const CreateProductBody = zod.object({
   "stripeProductId": zod.string().optional(),
   "stripePriceId": zod.string().optional(),
   "ebayListingId": zod.string().optional(),
+  "activationInstructions": zod.string().optional(),
   "emailTemplate": zod.string().optional(),
   "lowInventoryThreshold": zod.number().min(createProductBodyLowInventoryThresholdMin).optional()
 })
@@ -98,6 +100,7 @@ export const ListPublicProductsResponseItem = zod.object({
   "imageUrl": zod.string().nullish(),
   "category": zod.string().nullish(),
   "stripePriceId": zod.string().nullish(),
+  "activationInstructions": zod.string().nullish(),
   "availableKeyCount": zod.number()
 })
 export const ListPublicProductsResponse = zod.array(ListPublicProductsResponseItem)
@@ -124,6 +127,7 @@ export const GetProductResponse = zod.object({
   "stripeProductId": zod.string().nullish(),
   "stripePriceId": zod.string().nullish(),
   "ebayListingId": zod.string().nullish(),
+  "activationInstructions": zod.string().nullish(),
   "emailTemplate": zod.string().nullish(),
   "lowInventoryThreshold": zod.number().optional(),
   "availableKeyCount": zod.number(),
@@ -159,6 +163,7 @@ export const UpdateProductBody = zod.object({
   "stripeProductId": zod.string().nullish(),
   "stripePriceId": zod.string().nullish(),
   "ebayListingId": zod.string().nullish(),
+  "activationInstructions": zod.string().nullish(),
   "emailTemplate": zod.string().nullish(),
   "lowInventoryThreshold": zod.number().min(updateProductBodyLowInventoryThresholdMin).optional()
 })
@@ -177,6 +182,7 @@ export const UpdateProductResponse = zod.object({
   "stripeProductId": zod.string().nullish(),
   "stripePriceId": zod.string().nullish(),
   "ebayListingId": zod.string().nullish(),
+  "activationInstructions": zod.string().nullish(),
   "emailTemplate": zod.string().nullish(),
   "lowInventoryThreshold": zod.number().optional(),
   "availableKeyCount": zod.number(),
@@ -210,6 +216,7 @@ export const GetProductBySlugResponse = zod.object({
   "imageUrl": zod.string().nullish(),
   "category": zod.string().nullish(),
   "stripePriceId": zod.string().nullish(),
+  "activationInstructions": zod.string().nullish(),
   "availableKeyCount": zod.number()
 })
 
@@ -554,6 +561,25 @@ export const ListSyncLogsResponseItem = zod.object({
   "createdAt": zod.string()
 })
 export const ListSyncLogsResponse = zod.array(ListSyncLogsResponseItem)
+
+
+/**
+ * @summary Order lookup for customers
+ */
+export const OrderLookupQueryParams = zod.object({
+  "email": zod.string().email(),
+  "reference": zod.string()
+})
+
+export const OrderLookupResponse = zod.object({
+  "status": zod.enum(['pending', 'paid', 'fulfilled', 'failed', 'refunded']),
+  "productName": zod.string(),
+  "quantity": zod.number(),
+  "keys": zod.array(zod.string()).nullish(),
+  "activationInstructions": zod.string().nullish(),
+  "fulfilledAt": zod.string().nullish(),
+  "createdAt": zod.string()
+})
 
 
 /**

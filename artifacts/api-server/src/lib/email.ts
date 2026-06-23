@@ -19,6 +19,7 @@ export interface SendLicenseEmailParams {
   keyValue: string;
   orderId: number;
   purchaseDate: Date;
+  activationInstructions?: string | null;
   emailTemplate?: string | null;
 }
 
@@ -34,6 +35,8 @@ Your license key is:
 
 {{keyValue}}
 
+{{activationInstructions}}
+
 Order ID: {{orderId}}
 Purchase Date: {{purchaseDate}}
 
@@ -47,6 +50,7 @@ export async function sendLicenseEmail(params: SendLicenseEmailParams): Promise<
     buyerName: params.buyerName ?? "Customer",
     productName: params.productName,
     keyValue: params.keyValue,
+    activationInstructions: params.activationInstructions ?? "",
     orderId: String(params.orderId),
     purchaseDate: params.purchaseDate.toLocaleDateString("en-US", {
       year: "numeric",
@@ -96,6 +100,13 @@ ${bodyText}
         <code style="font-family: 'Courier New', Courier, monospace; font-size: 20px; font-weight: 700; color: #0c4a6e; letter-spacing: 1px; word-break: break-all;">${vars.keyValue}</code>
       </div>
     </div>
+
+    ${vars.activationInstructions ? `
+    <div style="margin-bottom: 32px;">
+      <h3 style="font-size: 14px; font-weight: 600; color: #6b7280; text-transform: uppercase; margin: 0 0 12px 0;">Activation Instructions</h3>
+      <div style="font-size: 15px; color: #4b5563; background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px; padding: 16px; white-space: pre-wrap;">${vars.activationInstructions}</div>
+    </div>
+    ` : ""}
 
     <div style="border-top: 1px solid #e5e7eb; padding-top: 24px; margin-bottom: 32px;">
       <h3 style="font-size: 14px; font-weight: 600; color: #6b7280; text-transform: uppercase; margin: 0 0 12px 0;">Order Details</h3>

@@ -23,6 +23,7 @@ export interface ProductInput {
   stripeProductId?: string;
   stripePriceId?: string;
   ebayListingId?: string;
+  activationInstructions?: string;
   emailTemplate?: string;
   /** @minimum 0 */
   lowInventoryThreshold?: number;

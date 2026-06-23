@@ -40,6 +40,8 @@ export interface Product {
   /** @nullable */
   ebayListingId?: string | null;
   /** @nullable */
+  activationInstructions?: string | null;
+  /** @nullable */
   emailTemplate?: string | null;
   lowInventoryThreshold?: number;
   availableKeyCount: number;
@@ -62,6 +64,8 @@ export interface PublicProduct {
   category?: string | null;
   /** @nullable */
   stripePriceId?: string | null;
+  /** @nullable */
+  activationInstructions?: string | null;
   availableKeyCount: number;
 }
 
@@ -82,6 +86,7 @@ export interface ProductInput {
   stripeProductId?: string;
   stripePriceId?: string;
   ebayListingId?: string;
+  activationInstructions?: string;
   emailTemplate?: string;
   /** @minimum 0 */
   lowInventoryThreshold?: number;
@@ -109,6 +114,8 @@ export interface ProductUpdate {
   stripePriceId?: string | null;
   /** @nullable */
   ebayListingId?: string | null;
+  /** @nullable */
+  activationInstructions?: string | null;
   /** @nullable */
   emailTemplate?: string | null;
   /** @minimum 0 */

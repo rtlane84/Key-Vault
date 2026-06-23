@@ -15,6 +15,7 @@ function formatPublic(p: typeof productsTable.$inferSelect, availableKeyCount: n
     imageUrl: p.imageUrl ?? null,
     category: p.category ?? null,
     stripePriceId: p.stripePriceId ?? null,
+    activationInstructions: p.activationInstructions ?? null,
     availableKeyCount,
   };
 }

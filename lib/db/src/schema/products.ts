@@ -16,6 +16,7 @@ export const productsTable = pgTable("products", {
   stripeProductId: text("stripe_product_id"),
   stripePriceId: text("stripe_price_id"),
   ebayListingId: text("ebay_listing_id"),
+  activationInstructions: text("activation_instructions"),
   emailTemplate: text("email_template"), // custom email body template
   lowInventoryThreshold: integer("low_inventory_threshold").notNull().default(5),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),

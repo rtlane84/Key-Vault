@@ -28,6 +28,7 @@ async function formatProduct(p: typeof productsTable.$inferSelect) {
     stripeProductId: p.stripeProductId ?? null,
     stripePriceId: p.stripePriceId ?? null,
     ebayListingId: p.ebayListingId ?? null,
+    activationInstructions: p.activationInstructions ?? null,
     emailTemplate: p.emailTemplate ?? null,
     lowInventoryThreshold: p.lowInventoryThreshold,
     availableKeyCount,

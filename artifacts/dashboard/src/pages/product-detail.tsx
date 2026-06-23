@@ -29,6 +29,8 @@ function EditProductDialog({ product }: { product: any }) {
   const [price, setPrice] = useState((product.price / 100).toString());
   const [stripePriceId, setStripePriceId] = useState(product.stripePriceId || "");
   const [ebayListingId, setEbayListingId] = useState(product.ebayListingId || "");
+  const [imageUrl, setImageUrl] = useState(product.imageUrl || "");
+  const [activationInstructions, setActivationInstructions] = useState(product.activationInstructions || "");
   const [description, setDescription] = useState(product.description || "");
   const queryClient = useQueryClient();
   const { toast } = useToast();
@@ -45,6 +47,8 @@ function EditProductDialog({ product }: { product: any }) {
           price: Math.round(parseFloat(price) * 100),
           stripePriceId: stripePriceId || null,
           ebayListingId: ebayListingId || null,
+          imageUrl: imageUrl || null,
+          activationInstructions: activationInstructions || null,
           description: description || null,
         },
       });
@@ -86,6 +90,20 @@ function EditProductDialog({ product }: { product: any }) {
           <div className="space-y-1">
             <Label htmlFor="edit-listing">eBay Listing ID</Label>
             <Input id="edit-listing" value={ebayListingId} onChange={e => setEbayListingId(e.target.value)} placeholder="123456789" />
+          </div>
+          <div className="space-y-1">
+            <Label htmlFor="edit-imageUrl">Product Image URL</Label>
+            <Input id="edit-imageUrl" value={imageUrl} onChange={e => setImageUrl(e.target.value)} placeholder="https://..." />
+          </div>
+          <div className="space-y-1">
+            <Label htmlFor="edit-activation">Activation Instructions</Label>
+            <Textarea 
+              id="edit-activation" 
+              value={activationInstructions} 
+              onChange={e => setActivationInstructions(e.target.value)} 
+              placeholder="How to use the key..."
+              rows={3}
+            />
           </div>
           <div className="space-y-1">
             <Label htmlFor="edit-desc">Description</Label>

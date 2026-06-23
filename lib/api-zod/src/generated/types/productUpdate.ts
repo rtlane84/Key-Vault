@@ -29,6 +29,8 @@ export interface ProductUpdate {
   /** @nullable */
   ebayListingId?: string | null;
   /** @nullable */
+  activationInstructions?: string | null;
+  /** @nullable */
   emailTemplate?: string | null;
   /** @minimum 0 */
   lowInventoryThreshold?: number;
