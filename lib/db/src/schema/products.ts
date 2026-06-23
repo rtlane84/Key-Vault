@@ -1,9 +1,11 @@
 import { pgTable, text, serial, timestamp, integer, boolean } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
+import { tenantsTable } from "./tenants";
 
 export const productsTable = pgTable("products", {
   id: serial("id").primaryKey(),
+  tenantId: integer("tenant_id").notNull().references(() => tenantsTable.id),
   name: text("name").notNull(),
   slug: text("slug").notNull().unique(),
   sku: text("sku").notNull().unique(),
@@ -29,6 +31,7 @@ export type Product = typeof productsTable.$inferSelect;
 
 export const licenseKeysTable = pgTable("license_keys", {
   id: serial("id").primaryKey(),
+  tenantId: integer("tenant_id").notNull().references(() => tenantsTable.id),
   productId: integer("product_id").notNull().references(() => productsTable.id, { onDelete: "cascade" }),
   keyValue: text("key_value").notNull(),
   status: text("status").notNull().default("available"), // available | assigned | delivered | failed

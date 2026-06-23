@@ -90,6 +90,7 @@ router.use((req, res, next) => {
 });
 
 router.get("/orders", async (req, res): Promise<void> => {
+  const tenantId = (req as any).tenantId;
   const params = ListOrdersQueryParams.safeParse(req.query);
   if (!params.success) {
     res.status(400).json({ error: params.error.message });
@@ -97,11 +98,11 @@ router.get("/orders", async (req, res): Promise<void> => {
   }
 
   let query = db.select().from(ordersTable).$dynamic();
-  const conditions = [];
+  const conditions = [eq(ordersTable.tenantId, tenantId)];
 
   if (params.data.status) conditions.push(eq(ordersTable.status, params.data.status));
   if (params.data.source) conditions.push(eq(ordersTable.source, params.data.source));
-  if (conditions.length > 0) query = query.where(and(...conditions));
+  query = query.where(and(...conditions));
 
   const orders = await query.orderBy(ordersTable.createdAt);
   const formatted = await Promise.all(orders.map(formatOrder));
@@ -109,13 +110,19 @@ router.get("/orders", async (req, res): Promise<void> => {
 });
 
 router.post("/orders", async (req, res): Promise<void> => {
+  const tenantId = (req as any).tenantId;
   const parsed = CreateOrderBody.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: parsed.error.message });
     return;
   }
 
-  const products = await db.select().from(productsTable).where(eq(productsTable.id, parsed.data.productId)).limit(1);
+  const products = await db.select().from(productsTable).where(
+    and(
+      eq(productsTable.id, parsed.data.productId),
+      eq(productsTable.tenantId, tenantId)
+    )
+  ).limit(1);
   if (products.length === 0) {
     res.status(404).json({ error: "Product not found" });
     return;
@@ -123,6 +130,7 @@ router.post("/orders", async (req, res): Promise<void> => {
 
   // Create pending order
   const [newOrder] = await db.insert(ordersTable).values({
+    tenantId,
     source: "manual",
     status: "pending",
     buyerEmail: parsed.data.buyerEmail,
@@ -145,6 +153,7 @@ router.post("/orders", async (req, res): Promise<void> => {
 });
 
 router.get("/orders/:id", async (req, res): Promise<void> => {
+  const tenantId = (req as any).tenantId;
   const raw = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
   const params = GetOrderParams.safeParse({ id: parseInt(raw, 10) });
   if (!params.success) {
@@ -152,7 +161,12 @@ router.get("/orders/:id", async (req, res): Promise<void> => {
     return;
   }
 
-  const rows = await db.select().from(ordersTable).where(eq(ordersTable.id, params.data.id)).limit(1);
+  const rows = await db.select().from(ordersTable).where(
+    and(
+      eq(ordersTable.id, params.data.id),
+      eq(ordersTable.tenantId, tenantId)
+    )
+  ).limit(1);
   if (rows.length === 0) {
     res.status(404).json({ error: "Order not found" });
     return;
@@ -161,6 +175,7 @@ router.get("/orders/:id", async (req, res): Promise<void> => {
 });
 
 router.post("/orders/:id/fulfill", async (req, res): Promise<void> => {
+  const tenantId = (req as any).tenantId;
   const raw = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
   const params = FulfillOrderParams.safeParse({ id: parseInt(raw, 10) });
   if (!params.success) {
@@ -168,7 +183,12 @@ router.post("/orders/:id/fulfill", async (req, res): Promise<void> => {
     return;
   }
 
-  const rows = await db.select().from(ordersTable).where(eq(ordersTable.id, params.data.id)).limit(1);
+  const rows = await db.select().from(ordersTable).where(
+    and(
+      eq(ordersTable.id, params.data.id),
+      eq(ordersTable.tenantId, tenantId)
+    )
+  ).limit(1);
   if (rows.length === 0) {
     res.status(404).json({ error: "Order not found" });
     return;
@@ -184,11 +204,17 @@ router.post("/orders/:id/fulfill", async (req, res): Promise<void> => {
     return;
   }
 
-  const updated = await db.select().from(ordersTable).where(eq(ordersTable.id, params.data.id)).limit(1);
+  const updated = await db.select().from(ordersTable).where(
+    and(
+      eq(ordersTable.id, params.data.id),
+      eq(ordersTable.tenantId, tenantId)
+    )
+  ).limit(1);
   res.json(await formatOrder(updated[0]));
 });
 
 router.post("/orders/:id/resend-email", async (req, res): Promise<void> => {
+  const tenantId = (req as any).tenantId;
   const raw = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
   const params = ResendOrderEmailParams.safeParse({ id: parseInt(raw, 10) });
   if (!params.success) {
@@ -196,7 +222,12 @@ router.post("/orders/:id/resend-email", async (req, res): Promise<void> => {
     return;
   }
 
-  const rows = await db.select().from(ordersTable).where(eq(ordersTable.id, params.data.id)).limit(1);
+  const rows = await db.select().from(ordersTable).where(
+    and(
+      eq(ordersTable.id, params.data.id),
+      eq(ordersTable.tenantId, tenantId)
+    )
+  ).limit(1);
   if (rows.length === 0) {
     res.status(404).json({ error: "Order not found" });
     return;

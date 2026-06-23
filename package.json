@@ -8,6 +8,7 @@
     "typecheck:libs": "tsc --build",
     "typecheck": "pnpm run typecheck:libs && pnpm -r --filter \"./artifacts/**\" --filter \"./scripts\" --if-present run typecheck",
     "db:push": "pnpm --filter @workspace/db run push",
+    "db:backfill": "pnpm --filter @workspace/scripts run saas-backfill",
     "api:build": "pnpm --filter @workspace/api-server run build",
     "api:start": "pnpm --filter @workspace/api-server run start",
     "dashboard:build": "pnpm --filter @workspace/dashboard run build",

@@ -7,8 +7,8 @@ const EBAY_CLIENT_ID = process.env.EBAY_CLIENT_ID ?? "";
 const EBAY_CLIENT_SECRET = process.env.EBAY_CLIENT_SECRET ?? "";
 const EBAY_REDIRECT_URI = process.env.EBAY_REDIRECT_URI ?? "";
 
-export async function refreshEbayToken(): Promise<string> {
-  const settings = await db.select().from(ebaySettingsTable).limit(1);
+export async function refreshEbayToken(tenantId: number): Promise<string> {
+  const settings = await db.select().from(ebaySettingsTable).where(eq(ebaySettingsTable.tenantId, tenantId)).limit(1);
   if (settings.length === 0 || !settings[0].refreshToken) {
     throw new Error("eBay account not connected or refresh token missing.");
   }
@@ -24,7 +24,7 @@ export async function refreshEbayToken(): Promise<string> {
     throw new Error("eBay credentials not configured (EBAY_CLIENT_ID/EBAY_CLIENT_SECRET)");
   }
 
-  logger.info("Refreshing eBay access token...");
+  logger.info({ tenantId }, "Refreshing eBay access token...");
   const credentials = Buffer.from(`${EBAY_CLIENT_ID}:${EBAY_CLIENT_SECRET}`).toString("base64");
   
   const response = await fetch("https://api.ebay.com/identity/v1/oauth2/token", {
@@ -41,7 +41,7 @@ export async function refreshEbayToken(): Promise<string> {
 
   if (!response.ok) {
     const text = await response.text();
-    logger.error({ status: response.status, body: text }, "eBay token refresh failed");
+    logger.error({ status: response.status, body: text, tenantId }, "eBay token refresh failed");
     throw new Error(`eBay token refresh failed: ${response.status}`);
   }
 
@@ -68,6 +68,7 @@ export interface MockEbayOrder {
   sku: string;
   ebayListingId: string;
   quantity: number;
+  tenantId: number;
 }
 
 export interface SyncResult {
@@ -113,6 +114,7 @@ async function logEvent(params: {
   event: string;
   level?: string;
   message: string;
+  tenantId: number;
   ebayOrderId?: string;
   orderId?: number;
   productId?: number;
@@ -120,6 +122,7 @@ async function logEvent(params: {
   meta?: Record<string, unknown>;
 }) {
   await db.insert(syncLogsTable).values({
+    tenantId: params.tenantId,
     event: params.event,
     level: params.level ?? "info",
     message: params.message,
@@ -209,6 +212,7 @@ async function processOrder(order: {
     });
     // Create the order record but mark as failed/needs attention
     await db.insert(ordersTable).values({
+      tenantId: order.tenantId,
       source: "ebay",
       status: "failed",
       buyerEmail: order.buyerEmail || "no-email@ebay.com",
@@ -225,6 +229,7 @@ async function processOrder(order: {
 
   // Create the order record in a pending state
   const [newOrder] = await db.insert(ordersTable).values({
+    tenantId: order.tenantId,
     source: "ebay",
     status: "pending",
     buyerEmail: order.buyerEmail,
@@ -255,9 +260,9 @@ async function processOrder(order: {
   return { success: true };
 }
 
-export async function runMockSync(): Promise<SyncResult> {
-  logger.info("Starting mock eBay sync");
-  await logEvent({ event: "sync_started", level: "info", message: "Mock eBay sync started" });
+export async function runMockSync(tenantId: number): Promise<SyncResult> {
+  logger.info({ tenantId }, "Starting mock eBay sync");
+  await logEvent({ tenantId, event: "sync_started", level: "info", message: "Mock eBay sync started" });
 
   const result: SyncResult = {
     ordersFound: MOCK_EBAY_ORDERS.length,
@@ -270,7 +275,7 @@ export async function runMockSync(): Promise<SyncResult> {
 
   for (const mockOrder of MOCK_EBAY_ORDERS) {
     try {
-      const res = await processOrder(mockOrder);
+      const res = await processOrder({ ...mockOrder, tenantId } as any);
       if (res.skipped) {
         result.skipped++;
       } else if (res.success) {
@@ -284,11 +289,12 @@ export async function runMockSync(): Promise<SyncResult> {
       result.failed++;
       const msg = err instanceof Error ? err.message : String(err);
       result.errors.push(msg);
-      logger.error({ err }, "Failed to process mock order");
+      logger.error({ err, tenantId }, "Failed to process mock order");
     }
   }
 
   await logEvent({
+    tenantId,
     event: "sync_completed",
     level: "info",
     message: `Mock sync complete: ${result.keysAssigned} keys assigned, ${result.failed} failed, ${result.skipped} skipped`,
@@ -296,24 +302,24 @@ export async function runMockSync(): Promise<SyncResult> {
   });
 
   // Update last sync time in settings
-  const settings = await db.select().from(ebaySettingsTable).limit(1);
+  const settings = await db.select().from(ebaySettingsTable).where(eq(ebaySettingsTable.tenantId, tenantId)).limit(1);
   if (settings.length > 0) {
     await db.update(ebaySettingsTable).set({ lastSyncAt: new Date() }).where(eq(ebaySettingsTable.id, settings[0].id));
   } else {
-    await db.insert(ebaySettingsTable).values({ lastSyncAt: new Date() });
+    await db.insert(ebaySettingsTable).values({ tenantId, lastSyncAt: new Date() });
   }
 
   return result;
 }
 
-export async function runRealEbaySync(): Promise<SyncResult> {
-  const accessToken = await refreshEbayToken();
+export async function runRealEbaySync(tenantId: number): Promise<SyncResult> {
+  const accessToken = await refreshEbayToken(tenantId);
 
-  const settings = await db.select().from(ebaySettingsTable).limit(1);
+  const settings = await db.select().from(ebaySettingsTable).where(eq(ebaySettingsTable.tenantId, tenantId)).limit(1);
   const s = settings[0];
 
-  logger.info("Starting real eBay sync");
-  await logEvent({ event: "sync_started", level: "info", message: "Real eBay sync started" });
+  logger.info({ tenantId }, "Starting real eBay sync");
+  await logEvent({ tenantId, event: "sync_started", level: "info", message: "Real eBay sync started" });
 
   const result: SyncResult = {
     ordersFound: 0,
@@ -496,9 +502,9 @@ export async function syncEbayListings(accessToken: string): Promise<{ imported:
  * Mark an order as fulfilled (shipped) on eBay.
  * For digital goods, we omit tracking info.
  */
-export async function markOrderAsFulfilledOnEbay(ebayOrderId: string, orderId: number): Promise<boolean> {
+export async function markOrderAsFulfilledOnEbay(ebayOrderId: string, orderId: number, tenantId: number): Promise<boolean> {
   try {
-    const accessToken = await refreshEbayToken();
+    const accessToken = await refreshEbayToken(tenantId);
     
     logger.info({ ebayOrderId, orderId }, "Marking eBay order as fulfilled...");
 

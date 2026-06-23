@@ -2,9 +2,11 @@ import { pgTable, text, serial, timestamp, integer } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { productsTable } from "./products";
+import { tenantsTable } from "./tenants";
 
 export const ordersTable = pgTable("orders", {
   id: serial("id").primaryKey(),
+  tenantId: integer("tenant_id").notNull().references(() => tenantsTable.id),
   source: text("source").notNull().default("manual"), // manual | ebay | stripe
   status: text("status").notNull().default("pending"), // pending | paid | fulfilled | failed | refunded
   buyerEmail: text("buyer_email").notNull(),

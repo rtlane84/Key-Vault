@@ -23,10 +23,12 @@ async function logEvent(params: {
   orderId?: number;
   productId?: number;
   keyId?: number;
+  tenantId?: number;
   meta?: Record<string, unknown>;
 }) {
   try {
     await db.insert(syncLogsTable).values({
+      tenantId: params.tenantId,
       event: params.event,
       level: params.level ?? "info",
       message: params.message,
@@ -100,6 +102,7 @@ export async function fulfillOrder(input: FulfillmentInput): Promise<Fulfillment
           message: msg,
           orderId,
           productId: product.id,
+          tenantId: order.tenantId,
         });
         
         await tx.update(ordersTable)
@@ -139,13 +142,13 @@ export async function fulfillOrder(input: FulfillmentInput): Promise<Fulfillment
         .where(eq(ordersTable.id, orderId));
 
       await logEvent({
-        tx,
         event: "keys_assigned",
         message: `${assignedKeys.length} keys assigned to order #${orderId} for product "${product.name}"`,
         orderId,
         productId: product.id,
+        tenantId: order.tenantId,
         meta: { keysCount: assignedKeys.length, buyerEmail: order.buyerEmail },
-      } as any); // logEvent doesn't support tx yet, but we'll fix it if needed or just use db
+      });
 
       return { order, product, keys: assignedKeys, alreadyFulfilled: false };
     });
@@ -186,6 +189,7 @@ export async function fulfillOrder(input: FulfillmentInput): Promise<Fulfillment
         message: `Email sent for order #${orderId} to ${order.buyerEmail}`,
         orderId,
         productId: order.productId,
+        tenantId: order.tenantId,
       });
     } else {
       logger.warn({ orderId, error: emailResult.error }, "Keys assigned but email failed");
@@ -195,6 +199,7 @@ export async function fulfillOrder(input: FulfillmentInput): Promise<Fulfillment
         message: `Email failed for order #${orderId}: ${emailResult.error}`,
         orderId,
         productId: order.productId,
+        tenantId: order.tenantId,
       });
     }
 
@@ -202,7 +207,7 @@ export async function fulfillOrder(input: FulfillmentInput): Promise<Fulfillment
     let ebayMarked = false;
     if (order.source === "ebay" && order.ebayOrderId) {
       if (emailResult.success) {
-        ebayMarked = await markOrderAsFulfilledOnEbay(order.ebayOrderId, orderId);
+        ebayMarked = await markOrderAsFulfilledOnEbay(order.ebayOrderId, orderId, order.tenantId);
         if (ebayMarked) {
           await db.update(ordersTable)
             .set({ ebayMarkedAt: new Date() })

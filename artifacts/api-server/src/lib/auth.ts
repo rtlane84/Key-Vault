@@ -13,13 +13,13 @@ export function verifyPassword(password: string, hash: string): boolean {
   return bcrypt.compareSync(password, hash);
 }
 
-export function signToken(payload: { email: string }): string {
+export function signToken(payload: { email: string; tenantId: number }): string {
   return jwt.sign(payload, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN });
 }
 
-export function verifyToken(token: string): { email: string } | null {
+export function verifyToken(token: string): { email: string; tenantId: number } | null {
   try {
-    const decoded = jwt.verify(token, JWT_SECRET) as { email: string };
+    const decoded = jwt.verify(token, JWT_SECRET) as { email: string; tenantId: number };
     return decoded;
   } catch {
     return null;
@@ -40,6 +40,10 @@ export function requireAuth(req: Request, res: Response, next: NextFunction): vo
     res.status(401).json({ error: "Invalid or expired token" });
     return;
   }
+
+  // Inject user info into request
+  (req as any).user = decoded;
+  (req as any).tenantId = decoded.tenantId;
 
   next();
 }

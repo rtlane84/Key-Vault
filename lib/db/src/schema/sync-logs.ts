@@ -1,9 +1,11 @@
 import { pgTable, text, serial, timestamp, integer } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
+import { tenantsTable } from "./tenants";
 
 export const syncLogsTable = pgTable("sync_logs", {
   id: serial("id").primaryKey(),
+  tenantId: integer("tenant_id").notNull().references(() => tenantsTable.id),
   event: text("event").notNull(),
   level: text("level").notNull().default("info"), // info | warn | error
   ebayOrderId: text("ebay_order_id"),
@@ -21,6 +23,7 @@ export type SyncLog = typeof syncLogsTable.$inferSelect;
 
 export const ebaySettingsTable = pgTable("ebay_settings", {
   id: serial("id").primaryKey(),
+  tenantId: integer("tenant_id").notNull().references(() => tenantsTable.id),
   sellerId: text("seller_id"),
   accessToken: text("access_token"),
   refreshToken: text("refresh_token"),
@@ -37,6 +40,7 @@ export type EbaySettings = typeof ebaySettingsTable.$inferSelect;
 
 export const ebayListingsTable = pgTable("ebay_listings", {
   id: serial("id").primaryKey(),
+  tenantId: integer("tenant_id").notNull().references(() => tenantsTable.id),
   listingId: text("listing_id").notNull().unique(),
   title: text("title").notNull(),
   sku: text("sku"),

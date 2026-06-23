@@ -1,6 +1,8 @@
 import { Router, type IRouter } from "express";
 import { signToken, verifyPassword } from "../lib/auth";
 import { AdminLoginBody } from "@workspace/api-zod";
+import { db, usersTable } from "@workspace/db";
+import { eq } from "drizzle-orm";
 
 const router: IRouter = Router();
 
@@ -11,30 +13,24 @@ router.post("/auth/login", async (req, res): Promise<void> => {
     return;
   }
 
-  const adminEmail = process.env.ADMIN_EMAIL;
-  const adminPassword = process.env.ADMIN_PASSWORD;
+  // Find user in database
+  const user = await db.query.usersTable.findFirst({
+    where: eq(usersTable.email, parsed.data.email),
+  });
 
-  if (!adminEmail || !adminPassword) {
-    res.status(500).json({ error: "Admin credentials not configured. Set ADMIN_EMAIL and ADMIN_PASSWORD." });
-    return;
-  }
-
-  if (parsed.data.email !== adminEmail) {
+  if (!user) {
     res.status(401).json({ error: "Invalid credentials" });
     return;
   }
 
-  // Support both plaintext (dev) and bcrypt-hashed passwords
-  const isValid = adminPassword.startsWith("$2")
-    ? verifyPassword(parsed.data.password, adminPassword)
-    : parsed.data.password === adminPassword;
+  const isValid = verifyPassword(parsed.data.password, user.passwordHash);
 
   if (!isValid) {
     res.status(401).json({ error: "Invalid credentials" });
     return;
   }
 
-  const token = signToken({ email: parsed.data.email });
+  const token = signToken({ email: user.email, tenantId: user.tenantId });
   res.json({ token });
 });
 
