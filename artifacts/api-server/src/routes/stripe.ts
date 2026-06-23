@@ -130,9 +130,6 @@ router.post("/stripe/webhook", async (req: Request, res: Response): Promise<void
     // Fulfill the order (assign key + send email)
     const result = await fulfillOrder({
       orderId: order.id,
-      productId,
-      buyerEmail,
-      buyerName: order.buyerName,
     });
 
     if (!result.success) {

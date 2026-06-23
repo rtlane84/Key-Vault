@@ -138,19 +138,29 @@ async function processOrder(order: {
   buyerName: string;
   sku?: string;
   ebayListingId?: string;
+  quantity?: number;
 }): Promise<{ success: boolean; skipped?: boolean; error?: string }> {
-  // Check for duplicate
+  // Check for duplicate by ebayOrderId AND ebayLineItemId to handle multi-item orders correctly
   const existing = await db
     .select()
     .from(ordersTable)
-    .where(eq(ordersTable.ebayOrderId, order.ebayOrderId))
+    .where(and(
+      eq(ordersTable.ebayOrderId, order.ebayOrderId),
+      eq(ordersTable.ebayLineItemId, order.ebayLineItemId)
+    ))
     .limit(1);
 
   if (existing.length > 0) {
+    // If it exists, try fulfilling it if it's not fulfilled yet
+    if (existing[0].status !== "fulfilled") {
+      const res = await fulfillOrder({ orderId: existing[0].id });
+      return { success: res.success, error: res.error };
+    }
+    
     await logEvent({
       event: "duplicate_skipped",
       level: "info",
-      message: `Order ${order.ebayOrderId} already processed, skipping`,
+      message: `eBay Order ${order.ebayOrderId} Line ${order.ebayLineItemId} already processed, skipping`,
       ebayOrderId: order.ebayOrderId,
       orderId: existing[0].id,
     });
@@ -160,7 +170,7 @@ async function processOrder(order: {
   // Match product by SKU or listing ID
   let product = null;
   
-  // 1. Try matching by listing ID via ebayListingsTable (preferred for manual mapping)
+  // 1. Try matching by listing ID via ebayListingsTable
   if (order.ebayListingId) {
     const rows = await db.select().from(ebayListingsTable).where(eq(ebayListingsTable.listingId, order.ebayListingId)).limit(1);
     if (rows[0]?.productId) {
@@ -169,127 +179,76 @@ async function processOrder(order: {
     }
   }
 
-  // 2. Try matching by SKU directly in productsTable
+  // 2. Try matching by SKU directly
   if (!product && order.sku) {
     const rows = await db.select().from(productsTable).where(eq(productsTable.sku, order.sku)).limit(1);
     product = rows[0] ?? null;
   }
 
-  // 3. Try matching by Listing ID directly in productsTable (legacy support)
-  if (!product && order.ebayListingId) {
-    const rows = await db.select().from(productsTable).where(eq(productsTable.ebayListingId, order.ebayListingId)).limit(1);
-    product = rows[0] ?? null;
-  }
-
   if (!product) {
-    const msg = `No product matched for order ${order.ebayOrderId} (SKU: ${order.sku}, listingId: ${order.ebayListingId})`;
+    const msg = `No product matched for eBay order ${order.ebayOrderId} (SKU: ${order.sku}, listingId: ${order.ebayListingId})`;
+    logger.warn({ ebayOrderId: order.ebayOrderId, sku: order.sku, listingId: order.ebayListingId }, "Product match failed");
     await logEvent({
-      event: "order_processed",
+      event: "product_match_failed",
       level: "error",
       message: msg,
       ebayOrderId: order.ebayOrderId,
     });
-    // Create a failed order record for visibility
-    const [newOrder] = await db.insert(ordersTable).values({
-      source: "ebay",
-      status: "failed",
-      buyerEmail: order.buyerEmail,
-      buyerName: order.buyerName,
-      productId: 0 as unknown as number, // no product match
-      ebayOrderId: order.ebayOrderId,
-      ebayLineItemId: order.ebayLineItemId,
-      failureReason: msg,
-    }).returning();
     return { success: false, error: msg };
   }
 
-  // Find an available key
-  const availableKeys = await db
-    .select()
-    .from(licenseKeysTable)
-    .where(
-      and(
-        eq(licenseKeysTable.productId, product.id),
-        eq(licenseKeysTable.status, "available")
-      )
-    )
-    .limit(1);
+  const quantity = order.quantity || 1;
 
-  if (availableKeys.length === 0) {
-    const msg = `No available keys for product "${product.name}" (order ${order.ebayOrderId})`;
+  if (!order.buyerEmail || !order.buyerEmail.includes("@")) {
+    const msg = `eBay order ${order.ebayOrderId} has no usable buyer email (${order.buyerEmail})`;
     await logEvent({
-      event: "no_key_available",
+      event: "missing_email",
       level: "error",
       message: msg,
       ebayOrderId: order.ebayOrderId,
-      productId: product.id,
     });
-    // Create a failed order record
+    // Create the order record but mark as failed/needs attention
     await db.insert(ordersTable).values({
       source: "ebay",
       status: "failed",
-      buyerEmail: order.buyerEmail,
+      buyerEmail: order.buyerEmail || "no-email@ebay.com",
       buyerName: order.buyerName,
+      ebayBuyerUsername: order.buyerName,
       productId: product.id,
+      quantity,
       ebayOrderId: order.ebayOrderId,
       ebayLineItemId: order.ebayLineItemId,
-      failureReason: msg,
+      failureReason: "missing_or_invalid_buyer_email",
     });
-    return { success: false, error: msg };
+    return { success: false, error: "missing_buyer_email" };
   }
 
-  const key = availableKeys[0];
-
-  // Create the order
+  // Create the order record in a pending state
   const [newOrder] = await db.insert(ordersTable).values({
     source: "ebay",
-    status: "fulfilled",
+    status: "pending",
     buyerEmail: order.buyerEmail,
     buyerName: order.buyerName,
+    ebayBuyerUsername: order.buyerName,
     productId: product.id,
+    quantity,
     ebayOrderId: order.ebayOrderId,
     ebayLineItemId: order.ebayLineItemId,
-    assignedKeyId: key.id,
-    assignedKeyValue: key.keyValue,
-    fulfilledAt: new Date(),
   }).returning();
 
-  // Mark the key as assigned
-  await db
-    .update(licenseKeysTable)
-    .set({
-      status: "assigned",
-      orderId: newOrder.id,
-      assignedAt: new Date(),
-    })
-    .where(eq(licenseKeysTable.id, key.id));
+  logger.info({ 
+    ebayOrderId: order.ebayOrderId, 
+    buyerEmail: order.buyerEmail, 
+    product: product.name, 
+    quantity 
+  }, "Processing eBay order");
 
-  await logEvent({
-    event: "key_assigned",
-    level: "info",
-    message: `Key assigned to buyer ${order.buyerEmail} for product "${product.name}"`,
-    ebayOrderId: order.ebayOrderId,
-    orderId: newOrder.id,
-    productId: product.id,
-    keyId: key.id,
-  });
-
-  // In production, send email here. For now, log the "send"
+  // Fulfill the order
   const fulfillmentResult = await fulfillOrder({
     orderId: newOrder.id,
-    productId: product.id,
-    buyerEmail: order.buyerEmail,
-    buyerName: order.buyerName,
   });
 
   if (!fulfillmentResult.success) {
-    await logEvent({
-      event: "fulfillment_failed",
-      level: "error",
-      message: `Fulfillment failed for order ${order.ebayOrderId}: ${fulfillmentResult.error}`,
-      ebayOrderId: order.ebayOrderId,
-      orderId: newOrder.id,
-    });
     return { success: false, error: fulfillmentResult.error };
   }
 
@@ -389,20 +348,31 @@ export async function runRealEbaySync(): Promise<SyncResult> {
         const lineItems = (ebayOrder.lineItems as Array<Record<string, unknown>>) ?? [];
         for (const lineItem of lineItems) {
           try {
-            const buyerEmail = (ebayOrder.buyer as Record<string, string>)?.email || (ebayOrder.buyer as Record<string, string>)?.username || "";
-            const buyerName = (ebayOrder.buyer as Record<string, string>)?.username || "";
+            const buyerUsername = (ebayOrder.buyer as Record<string, any>)?.username || "";
+            let buyerEmail = (ebayOrder.buyer as Record<string, any>)?.email || "";
+            
+            // If email is missing or looks like an eBay alias that might not be usable
+            // (eBay sometimes obfuscates emails, but usually they are usable if they end in @ebay.com or are real)
+            // If it's empty, we definitely can't send email.
+            if (!buyerEmail || buyerEmail === "") {
+              logger.warn({ ebayOrderId: ebayOrder.orderId, buyerUsername }, "eBay order missing buyer email, using username as placeholder");
+              // We'll let processOrder handle it, it might fail fulfillment if email is required
+            }
+
             const ebayOrderId = ebayOrder.orderId as string;
             const ebayLineItemId = lineItem.lineItemId as string;
             const sku = lineItem.sku as string | undefined;
             const listingId = (lineItem.legacyItemId || lineItem.listingMarketplaceId) as string | undefined;
+            const quantity = parseInt(lineItem.quantity as string || "1", 10);
 
             const res = await processOrder({
               ebayOrderId,
               ebayLineItemId,
               buyerEmail,
-              buyerName,
+              buyerName: buyerUsername, // Using username as buyerName
               sku,
               ebayListingId: listingId,
+              quantity,
             });
 
             if (res.skipped) {
@@ -588,61 +558,5 @@ export async function markOrderAsFulfilledOnEbay(ebayOrderId: string, orderId: n
 }
 
 export async function fulfillOrderById(orderId: number): Promise<{ success: boolean; error?: string }> {
-  const orders = await db.select().from(ordersTable).where(eq(ordersTable.id, orderId)).limit(1);
-  if (orders.length === 0) {
-    return { success: false, error: "Order not found" };
-  }
-  const order = orders[0];
-  if (order.status === "fulfilled") {
-    return { success: true };
-  }
-
-  const products = await db.select().from(productsTable).where(eq(productsTable.id, order.productId)).limit(1);
-  if (products.length === 0) {
-    return { success: false, error: "Product not found" };
-  }
-  const product = products[0];
-
-  const availableKeys = await db
-    .select()
-    .from(licenseKeysTable)
-    .where(and(eq(licenseKeysTable.productId, product.id), eq(licenseKeysTable.status, "available")))
-    .limit(1);
-
-  if (availableKeys.length === 0) {
-    await db.update(ordersTable).set({ failureReason: "No available keys", status: "failed" }).where(eq(ordersTable.id, orderId));
-    return { success: false, error: "No available keys for this product" };
-  }
-
-  const key = availableKeys[0];
-
-  await db.update(ordersTable).set({
-    status: "fulfilled",
-    assignedKeyId: key.id,
-    assignedKeyValue: key.keyValue,
-    failureReason: null,
-    fulfilledAt: new Date(),
-  }).where(eq(ordersTable.id, orderId));
-
-  await db.update(licenseKeysTable).set({
-    status: "assigned",
-    orderId,
-    assignedAt: new Date(),
-  }).where(eq(licenseKeysTable.id, key.id));
-
-  await logEvent({
-    event: "key_assigned",
-    level: "info",
-    message: `Manual fulfillment: Key assigned for order ${orderId} to ${order.buyerEmail}`,
-    orderId,
-    productId: product.id,
-    keyId: key.id,
-  });
-
-  // If it's an eBay order, mark it as fulfilled on eBay
-  if (order.source === "ebay" && order.ebayOrderId) {
-    await markOrderAsFulfilledOnEbay(order.ebayOrderId, orderId);
-  }
-
-  return { success: true };
+  return fulfillOrder({ orderId });
 }

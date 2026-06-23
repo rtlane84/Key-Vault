@@ -3,6 +3,7 @@ import cors from "cors";
 import pinoHttp from "pino-http";
 import { logger } from "./lib/logger";
 import stripeRouter from "./routes/stripe";
+import healthRouter from "./routes/health";
 
 // Stripe webhook needs raw body — mount BEFORE express.json()
 const app: Express = express();
@@ -36,6 +37,9 @@ app.use(express.urlencoded({ extended: true }));
 
 // Stripe webhook route (no auth — Stripe signs requests)
 app.use("/api", stripeRouter);
+
+// Health check (no auth)
+app.use("/api", healthRouter);
 
 // All other routes imported in routes/index.ts
 import router from "./routes";

@@ -86,9 +86,6 @@ router.post("/orders", async (req, res): Promise<void> => {
   // Fulfill immediately
   const result = await fulfillOrder({
     orderId: newOrder.id,
-    productId: parsed.data.productId,
-    buyerEmail: parsed.data.buyerEmail,
-    buyerName: parsed.data.buyerName,
   });
 
   if (!result.success) {
@@ -132,9 +129,6 @@ router.post("/orders/:id/fulfill", async (req, res): Promise<void> => {
   const order = rows[0];
   const result = await fulfillOrder({
     orderId: order.id,
-    productId: order.productId,
-    buyerEmail: order.buyerEmail,
-    buyerName: order.buyerName,
   });
 
   if (!result.success) {
@@ -161,8 +155,10 @@ router.post("/orders/:id/resend-email", async (req, res): Promise<void> => {
   }
 
   const order = rows[0];
-  if (!order.assignedKeyValue) {
-    res.status(400).json({ error: "Order has no assigned key to send" });
+  const keysToResend = order.keys ? (JSON.parse(order.keys) as string[]).join("\n") : order.assignedKeyValue;
+
+  if (!keysToResend) {
+    res.status(400).json({ error: "Order has no assigned keys to send" });
     return;
   }
 
@@ -173,7 +169,7 @@ router.post("/orders/:id/resend-email", async (req, res): Promise<void> => {
     to: order.buyerEmail,
     buyerName: order.buyerName,
     productName: product?.name ?? "Your product",
-    keyValue: order.assignedKeyValue,
+    keyValue: keysToResend,
     orderId: order.id,
     purchaseDate: order.fulfilledAt ?? order.createdAt,
     emailTemplate: product?.emailTemplate,

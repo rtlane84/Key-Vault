@@ -14,14 +14,18 @@ export const ordersTable = pgTable("orders", {
   // eBay
   ebayOrderId: text("ebay_order_id").unique(),
   ebayLineItemId: text("ebay_line_item_id"),
+  ebayBuyerUsername: text("ebay_buyer_username"),
   // Stripe
   stripePaymentIntentId: text("stripe_payment_intent_id").unique(),
-  stripeSessionId: text("stripe_session_id"),
+  stripeSessionId: text("stripe_session_id").unique(),
   // Fulfillment
   assignedKeyId: integer("assigned_key_id"),
   assignedKeyValue: text("assigned_key_value"),
-  failureReason: text("failure_reason"),
+  keys: text("keys"), // JSON array for multi-quantity orders
   fulfilledAt: timestamp("fulfilled_at", { withTimezone: true }),
+  emailSentAt: timestamp("email_sent_at", { withTimezone: true }),
+  ebayMarkedAt: timestamp("ebay_marked_at", { withTimezone: true }),
+  failureReason: text("failure_reason"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
 });

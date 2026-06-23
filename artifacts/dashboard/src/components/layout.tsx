@@ -29,7 +29,7 @@ export function Sidebar() {
       </div>
       <nav className="flex-1 py-4 flex flex-col gap-1 px-3">
         {navItems.map((item) => {
-          const isActive = location === item.href || (item.href !== "/" && location.startsWith(item.href));
+          const isActive = location === item.href;
           return (
             <Link key={item.href} href={item.href}>
               <div

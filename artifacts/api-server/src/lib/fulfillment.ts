@@ -1,4 +1,4 @@
-import { eq, and } from "drizzle-orm";
+import { eq, and, sql, inArray } from "drizzle-orm";
 import { db, productsTable, licenseKeysTable, ordersTable, syncLogsTable } from "@workspace/db";
 import { sendLicenseEmail } from "./email";
 import { logger } from "./logger";
@@ -6,16 +6,13 @@ import { markOrderAsFulfilledOnEbay } from "./ebay-sync";
 
 export interface FulfillmentInput {
   orderId: number;
-  productId: number;
-  buyerEmail: string;
-  buyerName?: string | null;
 }
 
 export interface FulfillmentResult {
   success: boolean;
-  keyValue?: string;
-  keyId?: number;
+  keys?: string[];
   emailSent?: boolean;
+  ebayMarked?: boolean;
   error?: string;
 }
 
@@ -28,116 +25,206 @@ async function logEvent(params: {
   keyId?: number;
   meta?: Record<string, unknown>;
 }) {
-  await db.insert(syncLogsTable).values({
-    event: params.event,
-    level: params.level ?? "info",
-    message: params.message,
-    orderId: params.orderId,
-    productId: params.productId,
-    keyId: params.keyId,
-    meta: params.meta ? JSON.stringify(params.meta) : undefined,
-  });
+  try {
+    await db.insert(syncLogsTable).values({
+      event: params.event,
+      level: params.level ?? "info",
+      message: params.message,
+      orderId: params.orderId,
+      productId: params.productId,
+      keyId: params.keyId,
+      meta: params.meta ? JSON.stringify(params.meta) : undefined,
+    });
+  } catch (err) {
+    logger.error({ err }, "Failed to log event to database");
+  }
 }
 
 export async function fulfillOrder(input: FulfillmentInput): Promise<FulfillmentResult> {
-  const { orderId, productId, buyerEmail, buyerName } = input;
+  const { orderId } = input;
 
-  const products = await db.select().from(productsTable).where(eq(productsTable.id, productId)).limit(1);
-  if (products.length === 0) {
-    return { success: false, error: `Product ${productId} not found` };
-  }
-  const product = products[0];
+  try {
+    // 1. Transactional Key Assignment
+    const result = await db.transaction(async (tx) => {
+      // Get order and lock it
+      const orders = await tx
+        .select()
+        .from(ordersTable)
+        .where(eq(ordersTable.id, orderId))
+        .for("update");
 
-  // Find an available key
-  const available = await db
-    .select()
-    .from(licenseKeysTable)
-    .where(and(eq(licenseKeysTable.productId, productId), eq(licenseKeysTable.status, "available")))
-    .limit(1);
+      if (orders.length === 0) {
+        throw new Error(`Order ${orderId} not found`);
+      }
+      const order = orders[0];
 
-  if (available.length === 0) {
-    const msg = `No available keys for product "${product.name}"`;
-    await logEvent({ event: "no_key_available", level: "error", message: msg, orderId, productId });
+      // Idempotency: If already fulfilled, return current keys
+      if (order.status === "fulfilled" && order.keys) {
+        return {
+          order,
+          keys: JSON.parse(order.keys) as string[],
+          alreadyFulfilled: true,
+        };
+      }
+
+      // Get product
+      const products = await tx
+        .select()
+        .from(productsTable)
+        .where(eq(productsTable.id, order.productId));
+
+      if (products.length === 0) {
+        throw new Error(`Product ${order.productId} not found`);
+      }
+      const product = products[0];
+
+      // Find available keys and lock them
+      // We use FOR UPDATE SKIP LOCKED to avoid contention if multiple processes are looking for keys
+      const available = await tx
+        .select()
+        .from(licenseKeysTable)
+        .where(
+          and(
+            eq(licenseKeysTable.productId, order.productId),
+            eq(licenseKeysTable.status, "available")
+          )
+        )
+        .limit(order.quantity)
+        .for("update", { skipLocked: true });
+
+      if (available.length < order.quantity) {
+        const msg = `Insufficient inventory for product "${product.name}". Requested: ${order.quantity}, Available: ${available.length}`;
+        await logEvent({
+          event: "insufficient_inventory",
+          level: "error",
+          message: msg,
+          orderId,
+          productId: product.id,
+        });
+        
+        await tx.update(ordersTable)
+          .set({ 
+            status: "failed", 
+            failureReason: "insufficient_inventory",
+            updatedAt: new Date() 
+          })
+          .where(eq(ordersTable.id, orderId));
+          
+        throw new Error(msg);
+      }
+
+      const assignedKeys = available.map(k => k.keyValue);
+      const assignedKeyIds = available.map(k => k.id);
+
+      // Mark keys assigned
+      await tx.update(licenseKeysTable)
+        .set({
+          status: "assigned",
+          orderId,
+          assignedAt: new Date(),
+        })
+        .where(inArray(licenseKeysTable.id, assignedKeyIds));
+
+      // Update order with keys
+      await tx.update(ordersTable)
+        .set({
+          assignedKeyId: assignedKeyIds[0], // legacy support
+          assignedKeyValue: assignedKeys[0], // legacy support
+          keys: JSON.stringify(assignedKeys),
+          status: "fulfilled",
+          fulfilledAt: new Date(),
+          failureReason: null,
+          updatedAt: new Date(),
+        })
+        .where(eq(ordersTable.id, orderId));
+
+      await logEvent({
+        tx,
+        event: "keys_assigned",
+        message: `${assignedKeys.length} keys assigned to order #${orderId} for product "${product.name}"`,
+        orderId,
+        productId: product.id,
+        meta: { keysCount: assignedKeys.length, buyerEmail: order.buyerEmail },
+      } as any); // logEvent doesn't support tx yet, but we'll fix it if needed or just use db
+
+      return { order, product, keys: assignedKeys, alreadyFulfilled: false };
+    });
+
+    if (result.alreadyFulfilled) {
+      // If already fulfilled, we might still want to try resending email if it failed before
+      // But for now, let's follow requirements: "Resend should resend the same keys already assigned"
+      // We will handle explicit resend separately or just skip here.
+      // Requirements say: "Ensure resend email does NOT assign a new key."
+      return { success: true, keys: result.keys, emailSent: !!result.order.emailSentAt };
+    }
+
+    const { order, product, keys } = result;
+
+    // 2. Send Email
+    const emailResult = await sendLicenseEmail({
+      to: order.buyerEmail,
+      buyerName: order.buyerName,
+      productName: product!.name,
+      keyValue: keys.join("\n"), // If multi-quantity, send all keys
+      orderId,
+      purchaseDate: order.createdAt,
+      emailTemplate: product!.emailTemplate,
+    });
+
+    if (emailResult.success) {
+      await db.update(ordersTable)
+        .set({ emailSentAt: new Date() })
+        .where(eq(ordersTable.id, orderId));
+      
+      await db.update(licenseKeysTable)
+        .set({ status: "delivered", deliveredAt: new Date() })
+        .where(eq(licenseKeysTable.orderId, orderId));
+
+      await logEvent({
+        event: "email_sent",
+        message: `Email sent for order #${orderId} to ${order.buyerEmail}`,
+        orderId,
+        productId: order.productId,
+      });
+    } else {
+      logger.warn({ orderId, error: emailResult.error }, "Keys assigned but email failed");
+      await logEvent({
+        event: "email_failed",
+        level: "warn",
+        message: `Email failed for order #${orderId}: ${emailResult.error}`,
+        orderId,
+        productId: order.productId,
+      });
+    }
+
+    // 3. eBay Fulfillment Mark
+    let ebayMarked = false;
+    if (order.source === "ebay" && order.ebayOrderId) {
+      if (emailResult.success) {
+        ebayMarked = await markOrderAsFulfilledOnEbay(order.ebayOrderId, orderId);
+        if (ebayMarked) {
+          await db.update(ordersTable)
+            .set({ ebayMarkedAt: new Date() })
+            .where(eq(ordersTable.id, orderId));
+        } else {
+          // Logged inside markOrderAsFulfilledOnEbay
+          logger.warn({ orderId, ebayOrderId: order.ebayOrderId }, "Email sent but eBay mark failed");
+        }
+      } else {
+        logger.info({ orderId }, "Skipping eBay mark because email failed");
+      }
+    }
+
+    return {
+      success: true,
+      keys,
+      emailSent: emailResult.success,
+      ebayMarked,
+    };
+
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error);
+    logger.error({ orderId, error: msg }, "Fulfillment failed");
     return { success: false, error: msg };
   }
-
-  const key = available[0];
-
-  // Mark key assigned
-  await db.update(licenseKeysTable).set({
-    status: "assigned",
-    orderId,
-    assignedAt: new Date(),
-  }).where(eq(licenseKeysTable.id, key.id));
-
-  // Update order with key
-  await db.update(ordersTable).set({
-    assignedKeyId: key.id,
-    assignedKeyValue: key.keyValue,
-    status: "fulfilled",
-    fulfilledAt: new Date(),
-  }).where(eq(ordersTable.id, orderId));
-
-  await logEvent({
-    event: "key_assigned",
-    message: `Key assigned to order #${orderId} for product "${product.name}"`,
-    orderId,
-    productId,
-    keyId: key.id,
-  });
-
-  // Send email
-  const emailResult = await sendLicenseEmail({
-    to: buyerEmail,
-    buyerName,
-    productName: product.name,
-    keyValue: key.keyValue,
-    orderId,
-    purchaseDate: new Date(),
-    emailTemplate: product.emailTemplate,
-  });
-
-  if (emailResult.success) {
-    // Mark key as delivered
-    await db.update(licenseKeysTable).set({ status: "delivered", deliveredAt: new Date() }).where(eq(licenseKeysTable.id, key.id));
-    await logEvent({
-      event: "order_processed",
-      message: emailResult.error === "SIMULATED" 
-        ? `Order #${orderId} fulfilled (EMAIL SIMULATED - Key: ${key.keyValue})`
-        : `Order #${orderId} fulfilled and email sent to ${buyerEmail}`,
-      orderId,
-      productId,
-      keyId: key.id,
-    });
-
-    // If this is an eBay order, mark it as fulfilled on eBay
-    const orderRows = await db.select({ 
-      source: ordersTable.source, 
-      ebayOrderId: ordersTable.ebayOrderId 
-    })
-    .from(ordersTable)
-    .where(eq(ordersTable.id, orderId))
-    .limit(1);
-
-    if (orderRows[0]?.source === "ebay" && orderRows[0].ebayOrderId) {
-      await markOrderAsFulfilledOnEbay(orderRows[0].ebayOrderId, orderId);
-    }
-  } else {
-    logger.warn({ orderId, error: emailResult.error }, "Key assigned but email failed");
-    await logEvent({
-      event: "key_send_failed",
-      level: "warn",
-      message: `Key assigned but email failed for order #${orderId}: ${emailResult.error}`,
-      orderId,
-      productId,
-      keyId: key.id,
-    });
-  }
-
-  return {
-    success: true,
-    keyValue: key.keyValue,
-    keyId: key.id,
-    emailSent: emailResult.success,
-  };
 }
