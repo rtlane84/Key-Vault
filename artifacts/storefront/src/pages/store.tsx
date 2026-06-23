@@ -1,9 +1,14 @@
+import { setBaseUrl, customFetch } from "@workspace/api-client-react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "wouter";
 import { ShoppingCart, Package, Zap, Shield, ChevronRight } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+
+// Ensure base URL is set (it's also set in main.tsx)
+const apiUrl = import.meta.env.VITE_API_URL || "http://localhost:5001/api";
+setBaseUrl(apiUrl);
 
 interface PublicProduct {
   id: number;
@@ -110,9 +115,7 @@ export default function StorePage() {
   const { data: products, isLoading, error } = useQuery<PublicProduct[]>({
     queryKey: ["public-products"],
     queryFn: async () => {
-      const res = await fetch("/api/products/public");
-      if (!res.ok) throw new Error("Failed to load products");
-      return res.json();
+      return customFetch<PublicProduct[]>("/products/public");
     },
   });
 

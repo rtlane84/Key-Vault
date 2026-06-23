@@ -1,3 +1,4 @@
+import { setBaseUrl, customFetch } from "@workspace/api-client-react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useParams, useLocation } from "wouter";
 import { ArrowLeft, Package, Zap, Shield, Clock, CheckCircle2, AlertCircle, Loader2 } from "lucide-react";
@@ -5,6 +6,10 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Separator } from "@/components/ui/separator";
+
+// Ensure base URL is set (it's also set in main.tsx)
+const apiUrl = import.meta.env.VITE_API_URL || "http://localhost:5001/api";
+setBaseUrl(apiUrl);
 
 interface PublicProduct {
   id: number;
@@ -30,12 +35,12 @@ export default function ProductPage() {
   const { data: product, isLoading, error } = useQuery<PublicProduct>({
     queryKey: ["product", params.slug],
     queryFn: async () => {
-      const res = await fetch(`/api/products/${encodeURIComponent(params.slug)}/by-slug`);
-      if (!res.ok) {
-        if (res.status === 404) throw new Error("not_found");
-        throw new Error("Failed to load product");
+      try {
+        return await customFetch<PublicProduct>(`/products/${encodeURIComponent(params.slug)}/by-slug`);
+      } catch (err: any) {
+        if (err.status === 404) throw new Error("not_found");
+        throw err;
       }
-      return res.json();
     },
     retry: false,
   });
@@ -44,20 +49,14 @@ export default function ProductPage() {
     mutationFn: async (productId: number) => {
       const origin = window.location.origin;
       const base = import.meta.env.BASE_URL.replace(/\/$/, "");
-      const res = await fetch("/api/stripe/checkout", {
+      return customFetch<{ url: string }>("/stripe/checkout", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           productId,
           successUrl: `${origin}${base}/success?session_id={CHECKOUT_SESSION_ID}`,
           cancelUrl: `${origin}${base}/product/${params.slug}`,
         }),
       });
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        throw new Error((data as { error?: string }).error ?? "Checkout failed");
-      }
-      return res.json() as Promise<{ url: string }>;
     },
     onSuccess: (data) => {
       window.location.href = data.url;
