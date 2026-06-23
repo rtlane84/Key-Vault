@@ -23,6 +23,7 @@ function formatKey(k: typeof licenseKeysTable.$inferSelect) {
 }
 
 router.get("/keys", async (req, res): Promise<void> => {
+  const tenantId = (req as any).tenantId;
   const params = ListKeysQueryParams.safeParse(req.query);
   if (!params.success) {
     res.status(400).json({ error: params.error.message });
@@ -31,7 +32,7 @@ router.get("/keys", async (req, res): Promise<void> => {
 
   let query = db.select().from(licenseKeysTable).$dynamic();
 
-  const conditions = [];
+  const conditions = [eq(licenseKeysTable.tenantId, tenantId)];
   if (params.data.productId !== undefined) {
     conditions.push(eq(licenseKeysTable.productId, params.data.productId));
   }
@@ -39,15 +40,14 @@ router.get("/keys", async (req, res): Promise<void> => {
     conditions.push(eq(licenseKeysTable.status, params.data.status));
   }
 
-  if (conditions.length > 0) {
-    query = query.where(and(...conditions));
-  }
+  query = query.where(and(...conditions));
 
   const keys = await query.orderBy(licenseKeysTable.createdAt);
   res.json(keys.map(formatKey));
 });
 
 router.post("/keys", async (req, res): Promise<void> => {
+  const tenantId = (req as any).tenantId;
   const parsed = CreateKeyBody.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: parsed.error.message });
@@ -57,6 +57,7 @@ router.post("/keys", async (req, res): Promise<void> => {
   const [key] = await db
     .insert(licenseKeysTable)
     .values({
+      tenantId,
       productId: parsed.data.productId,
       keyValue: parsed.data.keyValue,
       status: "available",
@@ -67,6 +68,7 @@ router.post("/keys", async (req, res): Promise<void> => {
 });
 
 router.post("/keys/import", async (req, res): Promise<void> => {
+  const tenantId = (req as any).tenantId;
   const parsed = ImportKeysBody.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: parsed.error.message });
@@ -83,7 +85,13 @@ router.post("/keys/import", async (req, res): Promise<void> => {
     const existing = await db
       .select()
       .from(licenseKeysTable)
-      .where(and(eq(licenseKeysTable.productId, productId), eq(licenseKeysTable.keyValue, keyValue.trim())))
+      .where(
+        and(
+          eq(licenseKeysTable.tenantId, tenantId),
+          eq(licenseKeysTable.productId, productId),
+          eq(licenseKeysTable.keyValue, keyValue.trim())
+        )
+      )
       .limit(1);
 
     if (existing.length > 0) {
@@ -92,6 +100,7 @@ router.post("/keys/import", async (req, res): Promise<void> => {
     }
 
     await db.insert(licenseKeysTable).values({
+      tenantId,
       productId,
       keyValue: keyValue.trim(),
       status: "available",
@@ -103,6 +112,7 @@ router.post("/keys/import", async (req, res): Promise<void> => {
 });
 
 router.delete("/keys/:id", async (req, res): Promise<void> => {
+  const tenantId = (req as any).tenantId;
   const raw = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
   const params = DeleteKeyParams.safeParse({ id: parseInt(raw, 10) });
   if (!params.success) {
@@ -110,7 +120,12 @@ router.delete("/keys/:id", async (req, res): Promise<void> => {
     return;
   }
 
-  const rows = await db.delete(licenseKeysTable).where(eq(licenseKeysTable.id, params.data.id)).returning();
+  const rows = await db.delete(licenseKeysTable).where(
+    and(
+      eq(licenseKeysTable.id, params.data.id),
+      eq(licenseKeysTable.tenantId, tenantId)
+    )
+  ).returning();
   if (rows.length === 0) {
     res.status(404).json({ error: "Key not found" });
     return;

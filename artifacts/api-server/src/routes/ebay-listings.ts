@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { eq, isNotNull, isNull } from "drizzle-orm";
+import { eq, isNotNull, isNull, and } from "drizzle-orm";
 import { db, ebayListingsTable, productsTable } from "@workspace/db";
 import { runRealEbaySync } from "../lib/ebay-sync";
 import {
@@ -14,7 +14,12 @@ const router: IRouter = Router();
 async function formatListing(l: typeof ebayListingsTable.$inferSelect) {
   let productName: string | null = null;
   if (l.productId) {
-    const p = await db.select().from(productsTable).where(eq(productsTable.id, l.productId)).limit(1);
+    const p = await db.select().from(productsTable).where(
+      and(
+        eq(productsTable.id, l.productId),
+        eq(productsTable.tenantId, l.tenantId)
+      )
+    ).limit(1);
     productName = p[0]?.name ?? null;
   }
   return {
@@ -33,13 +38,14 @@ async function formatListing(l: typeof ebayListingsTable.$inferSelect) {
 }
 
 router.get("/ebay/listings", async (req, res): Promise<void> => {
+  const tenantId = (req as any).tenantId;
   const params = ListEbayListingsQueryParams.safeParse(req.query);
   if (!params.success) {
     res.status(400).json({ error: params.error.message });
     return;
   }
 
-  let query = db.select().from(ebayListingsTable).$dynamic();
+  let query = db.select().from(ebayListingsTable).where(eq(ebayListingsTable.tenantId, tenantId)).$dynamic();
 
   if (params.data.mapped === true) {
     query = query.where(isNotNull(ebayListingsTable.productId));
@@ -54,6 +60,7 @@ router.get("/ebay/listings", async (req, res): Promise<void> => {
 
 // Sync listings from eBay or create mock listings
 router.post("/ebay/listings/sync", async (req, res): Promise<void> => {
+  const tenantId = (req as any).tenantId;
   const ebayClientId = process.env.EBAY_CLIENT_ID;
 
   if (!ebayClientId) {
@@ -69,18 +76,29 @@ router.post("/ebay/listings/sync", async (req, res): Promise<void> => {
 
     for (const mock of mockListings) {
       const existing = await db.select().from(ebayListingsTable)
-        .where(eq(ebayListingsTable.listingId, mock.listingId)).limit(1);
+        .where(
+          and(
+            eq(ebayListingsTable.listingId, mock.listingId),
+            eq(ebayListingsTable.tenantId, tenantId)
+          )
+        ).limit(1);
 
       // Auto-map by SKU if possible
       let productId: number | null = null;
       if (mock.sku) {
         const matchedProducts = await db.select().from(productsTable)
-          .where(eq(productsTable.sku, mock.sku)).limit(1);
+          .where(
+            and(
+              eq(productsTable.sku, mock.sku),
+              eq(productsTable.tenantId, tenantId)
+            )
+          ).limit(1);
         productId = matchedProducts[0]?.id ?? null;
       }
 
       if (existing.length === 0) {
         await db.insert(ebayListingsTable).values({
+          tenantId,
           listingId: mock.listingId,
           title: mock.title,
           sku: mock.sku,
@@ -99,7 +117,12 @@ router.post("/ebay/listings/sync", async (req, res): Promise<void> => {
           quantity: mock.quantity,
           productId: existing[0].productId ?? productId,
           lastSyncAt: new Date(),
-        }).where(eq(ebayListingsTable.listingId, mock.listingId));
+        }).where(
+          and(
+            eq(ebayListingsTable.listingId, mock.listingId),
+            eq(ebayListingsTable.tenantId, tenantId)
+          )
+        );
         updated++;
       }
     }
@@ -111,16 +134,17 @@ router.post("/ebay/listings/sync", async (req, res): Promise<void> => {
   // Real eBay listings sync via Inventory API
   try {
     const { refreshEbayToken, syncEbayListings } = await import("../lib/ebay-sync");
-    const accessToken = await refreshEbayToken();
-    const result = await syncEbayListings(accessToken);
+    const accessToken = await refreshEbayToken(tenantId);
+    const result = await syncEbayListings(accessToken, tenantId);
     res.json(result);
   } catch (err) {
-    logger.error({ err }, "Real eBay listing sync failed");
+    logger.error({ err, tenantId }, "Real eBay listing sync failed");
     res.status(500).json({ error: err instanceof Error ? err.message : "Sync failed" });
   }
 });
 
 router.patch("/ebay/listings/:id/map", async (req, res): Promise<void> => {
+  const tenantId = (req as any).tenantId;
   const raw = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
   const params = MapEbayListingParams.safeParse({ id: parseInt(raw, 10) });
   if (!params.success) {
@@ -137,7 +161,12 @@ router.patch("/ebay/listings/:id/map", async (req, res): Promise<void> => {
   const rows = await db
     .update(ebayListingsTable)
     .set({ productId: parsed.data.productId })
-    .where(eq(ebayListingsTable.id, params.data.id))
+    .where(
+      and(
+        eq(ebayListingsTable.id, params.data.id),
+        eq(ebayListingsTable.tenantId, tenantId)
+      )
+    )
     .returning();
 
   if (rows.length === 0) {

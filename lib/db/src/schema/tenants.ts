@@ -12,6 +12,7 @@ export const tenantsTable = pgTable("tenants", {
   stripeWebhookSecret: text("stripe_webhook_secret"),
   resendApiKey: text("resend_api_key"),
   fromEmail: text("from_email"),
+  supportEmail: text("support_email"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
 });

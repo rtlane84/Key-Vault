@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useLocation } from "wouter";
+import { useLocation, Link } from "wouter";
 import { useAdminLogin } from "@workspace/api-client-react";
 import { setToken, isAuthenticated } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
@@ -100,12 +100,18 @@ export default function LoginPage() {
                 )}
               </Button>
             </form>
+
+            <div className="mt-4 text-center text-sm">
+              Don't have an account?{" "}
+              <Link href="/register" className="text-primary hover:underline">
+                Register
+              </Link>
+            </div>
           </CardContent>
         </Card>
 
-        <p className="text-center text-xs text-muted-foreground mt-4">
-          Set <code className="text-primary/70 font-mono">ADMIN_EMAIL</code> and{" "}
-          <code className="text-primary/70 font-mono">ADMIN_PASSWORD</code> env vars to configure credentials.
+        <p className="text-center text-xs text-muted-foreground mt-4 italic">
+          Powering digital delivery for eBay sellers.
         </p>
       </div>
     </div>

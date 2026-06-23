@@ -10,7 +10,9 @@ import ebayRouter from "./ebay";
 import ebayListingsRouter from "./ebay-listings";
 import dashboardRouter from "./dashboard";
 import syncLogsRouter from "./sync-logs";
+import tenantsRouter from "./tenants";
 import { db, tenantsTable, usersTable } from "@workspace/db";
+import { SellerRegisterBody } from "@workspace/api-zod";
 
 const router: IRouter = Router();
 
@@ -20,12 +22,14 @@ router.use(authRouter);
 
 // Registration (MVP Onboarding)
 router.post("/auth/register", async (req, res) => {
-  const { email, password, name, slug } = req.body;
+  const parsed = SellerRegisterBody.safeParse(req.body);
 
-  if (!email || !password || !name || !slug) {
-    res.status(400).json({ error: "Missing required fields" });
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.message });
     return;
   }
+
+  const { email, password, name, slug } = parsed.data;
 
   try {
     const [tenant] = await db.insert(tenantsTable).values({
@@ -65,5 +69,6 @@ router.use(ebayRouter);
 router.use(ebayListingsRouter);
 router.use(dashboardRouter);
 router.use(syncLogsRouter);
+router.use(tenantsRouter);
 
 export default router;

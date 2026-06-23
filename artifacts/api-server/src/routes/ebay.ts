@@ -150,6 +150,9 @@ router.get("/ebay/callback", async (req, res): Promise<void> => {
       message: `eBay account connected${sellerId ? ` (seller: ${sellerId})` : ""}`,
     });
 
+    // Redirect back to dashboard with the tenant-specific URL if possible
+    // In a real SaaS we might redirect to a specific subdomain or store slug
+    // For now, redirect to the main dashboard
     res.redirect("/ebay?connected=1");
   } catch (err) {
     logger.error({ err }, "eBay OAuth callback failed");
@@ -186,7 +189,7 @@ router.post("/ebay/sync", async (req, res): Promise<void> => {
     res.json(result);
   } catch (err) {
     const message = err instanceof Error ? err.message : "Sync failed";
-    req.log.error({ err }, "eBay sync failed");
+    logger.error({ err, tenantId }, "eBay sync failed");
     res.status(400).json({ error: message });
   }
 });
@@ -198,7 +201,7 @@ router.post("/ebay/mock-sync", async (req, res): Promise<void> => {
     res.json(result);
   } catch (err) {
     const message = err instanceof Error ? err.message : "Mock sync failed";
-    req.log.error({ err }, "Mock sync failed");
+    logger.error({ err, tenantId }, "Mock sync failed");
     res.status(500).json({ error: message });
   }
 });

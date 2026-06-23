@@ -1,6 +1,6 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { eq, and } from "drizzle-orm";
-import { db, productsTable, ordersTable, licenseKeysTable } from "@workspace/db";
+import { db, productsTable, ordersTable, licenseKeysTable, tenantsTable } from "@workspace/db";
 import { getStripe } from "../lib/stripe-client";
 import { fulfillOrder } from "../lib/fulfillment";
 import { logger } from "../lib/logger";
@@ -24,11 +24,26 @@ router.post("/stripe/checkout", async (req, res): Promise<void> => {
     return;
   }
   const product = products[0];
+
+  // Resolve tenant settings for Stripe
+  const tenants = await db.select().from(tenantsTable).where(eq(tenantsTable.id, product.tenantId)).limit(1);
+  const tenant = tenants[0];
+
+  if (!tenant || !tenant.stripeSecretKey) {
+    res.status(500).json({ error: "Seller Stripe configuration missing" });
+    return;
+  }
   
   const availableKeys = await db
     .select()
     .from(licenseKeysTable)
-    .where(and(eq(licenseKeysTable.productId, productId), eq(licenseKeysTable.status, "available")))
+    .where(
+      and(
+        eq(licenseKeysTable.productId, productId),
+        eq(licenseKeysTable.status, "available"),
+        eq(licenseKeysTable.tenantId, product.tenantId)
+      )
+    )
     .limit(1);
 
   if (availableKeys.length === 0) {
@@ -41,7 +56,7 @@ router.post("/stripe/checkout", async (req, res): Promise<void> => {
     return;
   }
 
-  const stripe = getStripe();
+  const stripe = getStripe(tenant.stripeSecretKey);
   const session = await stripe.checkout.sessions.create({
     mode: "payment",
     line_items: [{
@@ -58,7 +73,11 @@ router.post("/stripe/checkout", async (req, res): Promise<void> => {
     }],
     success_url: successUrl ?? `${appUrl}/success?session_id={CHECKOUT_SESSION_ID}`,
     cancel_url: cancelUrl ?? `${appUrl}/product/${product.slug}`,
-    metadata: { productId: String(product.id), productSlug: product.slug },
+    metadata: { 
+      productId: String(product.id), 
+      productSlug: product.slug,
+      tenantId: String(product.tenantId)
+    },
   });
 
   res.json({ url: session.url });
@@ -67,8 +86,20 @@ router.post("/stripe/checkout", async (req, res): Promise<void> => {
 // Raw body is required for Stripe webhook signature verification
 // Mounted BEFORE express.json() in app.ts
 router.post("/stripe/webhook", async (req: Request, res: Response): Promise<void> => {
-  const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
-  if (!webhookSecret) {
+  // We need to resolve the tenant first to get their webhook secret
+  // However, we can't verify the signature without the secret.
+  // In a real SaaS with custom domains/webhooks, we'd look up by the webhook ID or endpoint URL.
+  // For now, we'll try a "global" secret for verification if provided, 
+  // or we'll have to skip signature verification if we want per-tenant secrets without a dispatcher.
+  
+  // STRATEGY: We'll assume the webhook secret is global for now (infrastructure level), 
+  // OR we'll use the tenantId from the metadata if we can extract it WITHOUT verification (risky).
+  
+  // Actually, for Phase 2, let's stick to a global webhook secret in ENV for simplicity, 
+  // but fulfillment will use the tenant-specific Stripe client if metadata is present.
+  
+  const globalWebhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
+  if (!globalWebhookSecret) {
     logger.error("STRIPE_WEBHOOK_SECRET not set");
     res.status(500).send("Webhook secret not configured");
     return;
@@ -82,8 +113,9 @@ router.post("/stripe/webhook", async (req: Request, res: Response): Promise<void
 
   let event;
   try {
-    const stripe = getStripe();
-    event = stripe.webhooks.constructEvent(req.body as Buffer, sig, webhookSecret);
+    // Verification uses global secret
+    const stripe = getStripe(); 
+    event = stripe.webhooks.constructEvent(req.body as Buffer, sig, globalWebhookSecret);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     logger.warn({ err }, "Stripe webhook signature verification failed");
@@ -94,10 +126,11 @@ router.post("/stripe/webhook", async (req: Request, res: Response): Promise<void
   if (event.type === "checkout.session.completed") {
     const session = event.data.object;
     const productId = session.metadata?.productId ? parseInt(session.metadata.productId, 10) : null;
+    const tenantId = session.metadata?.tenantId ? parseInt(session.metadata.tenantId, 10) : null;
     const buyerEmail = session.customer_details?.email ?? null;
 
-    if (!productId || !buyerEmail) {
-      logger.warn({ sessionId: session.id }, "Stripe webhook missing productId or buyerEmail");
+    if (!productId || !buyerEmail || !tenantId) {
+      logger.warn({ sessionId: session.id, productId, tenantId }, "Stripe webhook missing required metadata");
       res.json({ received: true });
       return;
     }
@@ -106,17 +139,23 @@ router.post("/stripe/webhook", async (req: Request, res: Response): Promise<void
     const existing = await db
       .select()
       .from(ordersTable)
-      .where(eq(ordersTable.stripeSessionId, session.id))
+      .where(
+        and(
+          eq(ordersTable.stripeSessionId, session.id),
+          eq(ordersTable.tenantId, tenantId)
+        )
+      )
       .limit(1);
 
     if (existing.length > 0) {
-      logger.info({ sessionId: session.id }, "Stripe session already processed, skipping");
+      logger.info({ sessionId: session.id, tenantId }, "Stripe session already processed, skipping");
       res.json({ received: true });
       return;
     }
 
-    // Create the pending order first
+    // Create the paid order
     const [order] = await db.insert(ordersTable).values({
+      tenantId,
       source: "stripe",
       status: "paid",
       buyerEmail,
@@ -133,8 +172,15 @@ router.post("/stripe/webhook", async (req: Request, res: Response): Promise<void
     });
 
     if (!result.success) {
-      logger.error({ orderId: order.id, error: result.error }, "Stripe fulfillment failed");
-      await db.update(ordersTable).set({ status: "failed", failureReason: result.error }).where(eq(ordersTable.id, order.id));
+      logger.error({ orderId: order.id, error: result.error, tenantId }, "Stripe fulfillment failed");
+      await db.update(ordersTable)
+        .set({ status: "failed", failureReason: result.error })
+        .where(
+          and(
+            eq(ordersTable.id, order.id),
+            eq(ordersTable.tenantId, tenantId)
+          )
+        );
     }
   }
 

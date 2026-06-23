@@ -1,11 +1,12 @@
 import { Router, type IRouter } from "express";
 import { db, syncLogsTable } from "@workspace/db";
 import { ListSyncLogsQueryParams } from "@workspace/api-zod";
-import { desc } from "drizzle-orm";
+import { desc, eq } from "drizzle-orm";
 
 const router: IRouter = Router();
 
 router.get("/sync-logs", async (req, res): Promise<void> => {
+  const tenantId = (req as any).tenantId;
   const params = ListSyncLogsQueryParams.safeParse(req.query);
   if (!params.success) {
     res.status(400).json({ error: params.error.message });
@@ -17,6 +18,7 @@ router.get("/sync-logs", async (req, res): Promise<void> => {
   const logs = await db
     .select()
     .from(syncLogsTable)
+    .where(eq(syncLogsTable.tenantId, tenantId))
     .orderBy(desc(syncLogsTable.createdAt))
     .limit(limit);
 

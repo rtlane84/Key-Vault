@@ -65,6 +65,58 @@ paths:
         "401":
           description: Invalid credentials
 
+  /auth/register:
+    post:
+      operationId: sellerRegister
+      tags: [auth]
+      summary: Seller registration
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RegisterInput"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RegisterResult"
+        "409":
+          description: Conflict (email or slug exists)
+
+  # Tenants
+  /tenants/me:
+    get:
+      operationId: getMyTenant
+      tags: [auth]
+      summary: Get current tenant settings
+      responses:
+        "200":
+          description: Tenant settings
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Tenant"
+    patch:
+      operationId: updateMyTenant
+      tags: [auth]
+      summary: Update current tenant settings
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TenantUpdate"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Tenant"
+
   # Products (admin)
   /products:
     get:
@@ -752,6 +804,8 @@ components:
           minimum: 0
         imageUrl:
           type: string
+        activationInstructions:
+          type: string
         category:
           type: string
         active:
@@ -786,6 +840,8 @@ components:
           type: integer
           minimum: 0
         imageUrl:
+          type: ["string", "null"]
+        activationInstructions:
           type: ["string", "null"]
         category:
           type: ["string", "null"]
@@ -1022,7 +1078,6 @@ components:
 
     SyncResult:
       type: object
-      required: [ordersFound, ordersProcessed, keysAssigned, failed, skipped]
       properties:
         ordersFound:
           type: integer
@@ -1038,6 +1093,72 @@ components:
           type: array
           items:
             type: string
+
+    RegisterInput:
+      type: object
+      required: [email, password, name, slug]
+      properties:
+        email:
+          type: string
+        password:
+          type: string
+        name:
+          type: string
+        slug:
+          type: string
+
+    RegisterResult:
+      type: object
+      properties:
+        message:
+          type: string
+        userId:
+          type: integer
+        tenantId:
+          type: integer
+
+    Tenant:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        slug:
+          type: string
+        status:
+          type: string
+        stripeSecretKey:
+          type: string
+          nullable: true
+        stripeWebhookSecret:
+          type: string
+          nullable: true
+        resendApiKey:
+          type: string
+          nullable: true
+        fromEmail:
+          type: string
+          nullable: true
+        supportEmail:
+          type: string
+          nullable: true
+
+    TenantUpdate:
+      type: object
+      properties:
+        name:
+          type: string
+        stripeSecretKey:
+          type: string
+        stripeWebhookSecret:
+          type: string
+        resendApiKey:
+          type: string
+        fromEmail:
+          type: string
+        supportEmail:
+          type: string
 
     SyncLog:
       type: object

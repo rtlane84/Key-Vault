@@ -7,10 +7,10 @@
  */
 
 export interface SyncResult {
-  ordersFound: number;
-  ordersProcessed: number;
-  keysAssigned: number;
-  failed: number;
-  skipped: number;
+  ordersFound?: number;
+  ordersProcessed?: number;
+  keysAssigned?: number;
+  failed?: number;
+  skipped?: number;
   errors?: string[];
 }

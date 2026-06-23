@@ -21,7 +21,5 @@ export interface PublicProduct {
   category?: string | null;
   /** @nullable */
   stripePriceId?: string | null;
-  /** @nullable */
-  activationInstructions?: string | null;
   availableKeyCount: number;
 }

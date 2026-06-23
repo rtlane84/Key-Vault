@@ -15,6 +15,7 @@ export function Sidebar() {
     { label: "eBay Orders", href: "/ebay/orders", icon: ShoppingCart },
     { label: "eBay Sync", href: "/ebay", icon: Settings },
     { label: "Logs", href: "/logs", icon: ListTree },
+    { label: "Settings", href: "/settings", icon: Settings },
   ];
 
   function handleSignOut() {

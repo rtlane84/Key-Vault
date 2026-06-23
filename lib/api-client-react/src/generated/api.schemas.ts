@@ -40,8 +40,6 @@ export interface Product {
   /** @nullable */
   ebayListingId?: string | null;
   /** @nullable */
-  activationInstructions?: string | null;
-  /** @nullable */
   emailTemplate?: string | null;
   lowInventoryThreshold?: number;
   availableKeyCount: number;
@@ -64,8 +62,6 @@ export interface PublicProduct {
   category?: string | null;
   /** @nullable */
   stripePriceId?: string | null;
-  /** @nullable */
-  activationInstructions?: string | null;
   availableKeyCount: number;
 }
 
@@ -81,12 +77,12 @@ export interface ProductInput {
   /** @minimum 0 */
   price: number;
   imageUrl?: string;
+  activationInstructions?: string;
   category?: string;
   active?: boolean;
   stripeProductId?: string;
   stripePriceId?: string;
   ebayListingId?: string;
-  activationInstructions?: string;
   emailTemplate?: string;
   /** @minimum 0 */
   lowInventoryThreshold?: number;
@@ -106,6 +102,8 @@ export interface ProductUpdate {
   /** @nullable */
   imageUrl?: string | null;
   /** @nullable */
+  activationInstructions?: string | null;
+  /** @nullable */
   category?: string | null;
   active?: boolean;
   /** @nullable */
@@ -114,8 +112,6 @@ export interface ProductUpdate {
   stripePriceId?: string | null;
   /** @nullable */
   ebayListingId?: string | null;
-  /** @nullable */
-  activationInstructions?: string | null;
   /** @nullable */
   emailTemplate?: string | null;
   /** @minimum 0 */
@@ -302,12 +298,46 @@ export interface EbayListingMapInput {
 }
 
 export interface SyncResult {
-  ordersFound: number;
-  ordersProcessed: number;
-  keysAssigned: number;
-  failed: number;
-  skipped: number;
+  ordersFound?: number;
+  ordersProcessed?: number;
+  keysAssigned?: number;
+  failed?: number;
+  skipped?: number;
   errors?: string[];
+}
+
+export interface RegisterInput {
+  email: string;
+  password: string;
+  name: string;
+  slug: string;
+}
+
+export interface RegisterResult {
+  message?: string;
+  userId?: number;
+  tenantId?: number;
+}
+
+export interface Tenant {
+  id?: number;
+  name?: string;
+  slug?: string;
+  status?: string;
+  stripeSecretKey?: string | null;
+  stripeWebhookSecret?: string | null;
+  resendApiKey?: string | null;
+  fromEmail?: string | null;
+  supportEmail?: string | null;
+}
+
+export interface TenantUpdate {
+  name?: string;
+  stripeSecretKey?: string;
+  stripeWebhookSecret?: string;
+  resendApiKey?: string;
+  fromEmail?: string;
+  supportEmail?: string;
 }
 
 export type SyncLogLevel = typeof SyncLogLevel[keyof typeof SyncLogLevel];

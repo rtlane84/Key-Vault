@@ -18,12 +18,12 @@ export interface ProductInput {
   /** @minimum 0 */
   price: number;
   imageUrl?: string;
+  activationInstructions?: string;
   category?: string;
   active?: boolean;
   stripeProductId?: string;
   stripePriceId?: string;
   ebayListingId?: string;
-  activationInstructions?: string;
   emailTemplate?: string;
   /** @minimum 0 */
   lowInventoryThreshold?: number;

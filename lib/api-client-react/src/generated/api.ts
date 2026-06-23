@@ -49,9 +49,13 @@ import type {
   ProductInput,
   ProductUpdate,
   PublicProduct,
+  RegisterInput,
+  RegisterResult,
   ResendEmailResult,
   SyncLog,
-  SyncResult
+  SyncResult,
+  Tenant,
+  TenantUpdate
 } from './api.schemas';
 
 import { customFetch } from '../custom-fetch';
@@ -212,6 +216,225 @@ export const useAdminLogin = <TError = ErrorType<void>,
         TContext
       > => {
       return useMutation(getAdminLoginMutationOptions(options));
+    }
+
+export const getSellerRegisterUrl = () => {
+
+
+
+
+  return `/api/auth/register`
+}
+
+/**
+ * @summary Seller registration
+ */
+export const sellerRegister = async (registerInput: RegisterInput, options?: RequestInit): Promise<RegisterResult> => {
+
+  return customFetch<RegisterResult>(getSellerRegisterUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      registerInput,)
+  }
+);}
+
+
+
+
+export const getSellerRegisterMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof sellerRegister>>, TError,{data: BodyType<RegisterInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof sellerRegister>>, TError,{data: BodyType<RegisterInput>}, TContext> => {
+
+const mutationKey = ['sellerRegister'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof sellerRegister>>, {data: BodyType<RegisterInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  sellerRegister(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type SellerRegisterMutationResult = NonNullable<Awaited<ReturnType<typeof sellerRegister>>>
+    export type SellerRegisterMutationBody = BodyType<RegisterInput>
+    export type SellerRegisterMutationError = ErrorType<void>
+
+    /**
+ * @summary Seller registration
+ */
+export const useSellerRegister = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof sellerRegister>>, TError,{data: BodyType<RegisterInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof sellerRegister>>,
+        TError,
+        {data: BodyType<RegisterInput>},
+        TContext
+      > => {
+      return useMutation(getSellerRegisterMutationOptions(options));
+    }
+
+export const getGetMyTenantUrl = () => {
+
+
+
+
+  return `/api/tenants/me`
+}
+
+/**
+ * @summary Get current tenant settings
+ */
+export const getMyTenant = async ( options?: RequestInit): Promise<Tenant> => {
+
+  return customFetch<Tenant>(getGetMyTenantUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetMyTenantQueryKey = () => {
+    return [
+    `/api/tenants/me`
+    ] as const;
+    }
+
+
+export const getGetMyTenantQueryOptions = <TData = Awaited<ReturnType<typeof getMyTenant>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getMyTenant>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetMyTenantQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getMyTenant>>> = ({ signal }) => getMyTenant({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getMyTenant>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetMyTenantQueryResult = NonNullable<Awaited<ReturnType<typeof getMyTenant>>>
+export type GetMyTenantQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Get current tenant settings
+ */
+
+export function useGetMyTenant<TData = Awaited<ReturnType<typeof getMyTenant>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getMyTenant>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetMyTenantQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getUpdateMyTenantUrl = () => {
+
+
+
+
+  return `/api/tenants/me`
+}
+
+/**
+ * @summary Update current tenant settings
+ */
+export const updateMyTenant = async (tenantUpdate: TenantUpdate, options?: RequestInit): Promise<Tenant> => {
+
+  return customFetch<Tenant>(getUpdateMyTenantUrl(),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      tenantUpdate,)
+  }
+);}
+
+
+
+
+export const getUpdateMyTenantMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateMyTenant>>, TError,{data: BodyType<TenantUpdate>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateMyTenant>>, TError,{data: BodyType<TenantUpdate>}, TContext> => {
+
+const mutationKey = ['updateMyTenant'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateMyTenant>>, {data: BodyType<TenantUpdate>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  updateMyTenant(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateMyTenantMutationResult = NonNullable<Awaited<ReturnType<typeof updateMyTenant>>>
+    export type UpdateMyTenantMutationBody = BodyType<TenantUpdate>
+    export type UpdateMyTenantMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Update current tenant settings
+ */
+export const useUpdateMyTenant = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateMyTenant>>, TError,{data: BodyType<TenantUpdate>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateMyTenant>>,
+        TError,
+        {data: BodyType<TenantUpdate>},
+        TContext
+      > => {
+      return useMutation(getUpdateMyTenantMutationOptions(options));
     }
 
 export const getListProductsUrl = () => {

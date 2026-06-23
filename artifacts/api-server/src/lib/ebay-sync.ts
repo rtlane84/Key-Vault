@@ -68,7 +68,6 @@ export interface MockEbayOrder {
   sku: string;
   ebayListingId: string;
   quantity: number;
-  tenantId: number;
 }
 
 export interface SyncResult {
@@ -139,6 +138,7 @@ async function processOrder(order: {
   ebayLineItemId: string;
   buyerEmail: string;
   buyerName: string;
+  tenantId: number;
   sku?: string;
   ebayListingId?: string;
   quantity?: number;
@@ -149,7 +149,8 @@ async function processOrder(order: {
     .from(ordersTable)
     .where(and(
       eq(ordersTable.ebayOrderId, order.ebayOrderId),
-      eq(ordersTable.ebayLineItemId, order.ebayLineItemId)
+      eq(ordersTable.ebayLineItemId, order.ebayLineItemId),
+      eq(ordersTable.tenantId, order.tenantId)
     ))
     .limit(1);
 
@@ -161,6 +162,7 @@ async function processOrder(order: {
     }
     
     await logEvent({
+      tenantId: existing[0].tenantId,
       event: "duplicate_skipped",
       level: "info",
       message: `eBay Order ${order.ebayOrderId} Line ${order.ebayLineItemId} already processed, skipping`,
@@ -175,23 +177,39 @@ async function processOrder(order: {
   
   // 1. Try matching by listing ID via ebayListingsTable
   if (order.ebayListingId) {
-    const rows = await db.select().from(ebayListingsTable).where(eq(ebayListingsTable.listingId, order.ebayListingId)).limit(1);
+    const rows = await db.select().from(ebayListingsTable).where(
+      and(
+        eq(ebayListingsTable.listingId, order.ebayListingId),
+        eq(ebayListingsTable.tenantId, order.tenantId)
+      )
+    ).limit(1);
     if (rows[0]?.productId) {
-      const pRows = await db.select().from(productsTable).where(eq(productsTable.id, rows[0].productId)).limit(1);
+      const pRows = await db.select().from(productsTable).where(
+        and(
+          eq(productsTable.id, rows[0].productId),
+          eq(productsTable.tenantId, order.tenantId)
+        )
+      ).limit(1);
       product = pRows[0] ?? null;
     }
   }
 
   // 2. Try matching by SKU directly
   if (!product && order.sku) {
-    const rows = await db.select().from(productsTable).where(eq(productsTable.sku, order.sku)).limit(1);
+    const rows = await db.select().from(productsTable).where(
+      and(
+        eq(productsTable.sku, order.sku),
+        eq(productsTable.tenantId, order.tenantId)
+      )
+    ).limit(1);
     product = rows[0] ?? null;
   }
 
   if (!product) {
     const msg = `No product matched for eBay order ${order.ebayOrderId} (SKU: ${order.sku}, listingId: ${order.ebayListingId})`;
-    logger.warn({ ebayOrderId: order.ebayOrderId, sku: order.sku, listingId: order.ebayListingId }, "Product match failed");
+    logger.warn({ ebayOrderId: order.ebayOrderId, sku: order.sku, listingId: order.ebayListingId, tenantId: order.tenantId }, "Product match failed");
     await logEvent({
+      tenantId: order.tenantId,
       event: "product_match_failed",
       level: "error",
       message: msg,
@@ -205,6 +223,7 @@ async function processOrder(order: {
   if (!order.buyerEmail || !order.buyerEmail.includes("@")) {
     const msg = `eBay order ${order.ebayOrderId} has no usable buyer email (${order.buyerEmail})`;
     await logEvent({
+      tenantId: order.tenantId,
       event: "missing_email",
       level: "error",
       message: msg,
@@ -275,7 +294,7 @@ export async function runMockSync(tenantId: number): Promise<SyncResult> {
 
   for (const mockOrder of MOCK_EBAY_ORDERS) {
     try {
-      const res = await processOrder({ ...mockOrder, tenantId } as any);
+      const res = await processOrder({ ...mockOrder, tenantId });
       if (res.skipped) {
         result.skipped++;
       } else if (res.success) {
@@ -357,12 +376,8 @@ export async function runRealEbaySync(tenantId: number): Promise<SyncResult> {
             const buyerUsername = (ebayOrder.buyer as Record<string, any>)?.username || "";
             let buyerEmail = (ebayOrder.buyer as Record<string, any>)?.email || "";
             
-            // If email is missing or looks like an eBay alias that might not be usable
-            // (eBay sometimes obfuscates emails, but usually they are usable if they end in @ebay.com or are real)
-            // If it's empty, we definitely can't send email.
             if (!buyerEmail || buyerEmail === "") {
-              logger.warn({ ebayOrderId: ebayOrder.orderId, buyerUsername }, "eBay order missing buyer email, using username as placeholder");
-              // We'll let processOrder handle it, it might fail fulfillment if email is required
+              logger.warn({ ebayOrderId: ebayOrder.orderId, buyerUsername, tenantId }, "eBay order missing buyer email");
             }
 
             const ebayOrderId = ebayOrder.orderId as string;
@@ -375,10 +390,11 @@ export async function runRealEbaySync(tenantId: number): Promise<SyncResult> {
               ebayOrderId,
               ebayLineItemId,
               buyerEmail,
-              buyerName: buyerUsername, // Using username as buyerName
+              buyerName: buyerUsername,
               sku,
               ebayListingId: listingId,
               quantity,
+              tenantId,
             });
 
             if (res.skipped) {
@@ -394,29 +410,30 @@ export async function runRealEbaySync(tenantId: number): Promise<SyncResult> {
             result.failed++;
             const msg = err instanceof Error ? err.message : String(err);
             result.errors.push(msg);
-            logger.error({ err }, "Failed to process eBay order line item");
+            logger.error({ err, tenantId }, "Failed to process eBay order line item");
           }
         }
       }
     } else {
       const text = await response.text();
-      logger.error({ status: response.status, text }, "eBay Order API error");
+      logger.error({ status: response.status, text, tenantId }, "eBay Order API error");
       result.errors.push(`Order API error: ${response.status}`);
     }
   } catch (err) {
-    logger.error({ err }, "eBay Order sync failed");
+    logger.error({ err, tenantId }, "eBay Order sync failed");
     result.errors.push("Order sync failed");
   }
 
   // 2. Sync Listings (Inventory API)
   try {
-    await syncEbayListings(accessToken);
+    await syncEbayListings(accessToken, tenantId);
   } catch (err) {
     logger.error({ err }, "eBay Listing sync failed");
     result.errors.push("Listing sync failed");
   }
 
   await logEvent({
+    tenantId,
     event: "sync_completed",
     level: "info",
     message: `Real sync complete: ${result.keysAssigned} keys assigned, ${result.failed} failed, ${result.skipped} skipped`,
@@ -424,13 +441,18 @@ export async function runRealEbaySync(tenantId: number): Promise<SyncResult> {
   });
 
   // Update last sync time
-  await db.update(ebaySettingsTable).set({ lastSyncAt: new Date() }).where(eq(ebaySettingsTable.id, s.id));
+  await db.update(ebaySettingsTable).set({ lastSyncAt: new Date() }).where(
+    and(
+      eq(ebaySettingsTable.id, s.id),
+      eq(ebaySettingsTable.tenantId, tenantId)
+    )
+  );
 
   return result;
 }
 
-export async function syncEbayListings(accessToken: string): Promise<{ imported: number, updated: number, total: number }> {
-  logger.info("Real eBay listing sync started (using Inventory API)");
+export async function syncEbayListings(accessToken: string, tenantId: number): Promise<{ imported: number, updated: number, total: number }> {
+  logger.info({ tenantId }, "Real eBay listing sync started (using Inventory API)");
 
   const response = await fetch("https://api.ebay.com/sell/inventory/v1/inventory_item?limit=100&offset=0", {
     headers: {
@@ -466,14 +488,25 @@ export async function syncEbayListings(accessToken: string): Promise<{ imported:
 
         const listingId = offer.listingId;
         const existing = await db.select().from(ebayListingsTable)
-          .where(eq(ebayListingsTable.listingId, listingId)).limit(1);
+          .where(
+            and(
+              eq(ebayListingsTable.listingId, listingId),
+              eq(ebayListingsTable.tenantId, tenantId)
+            )
+          ).limit(1);
 
         // Auto-map by SKU
         const matchedProducts = await db.select().from(productsTable)
-          .where(eq(productsTable.sku, sku)).limit(1);
+          .where(
+            and(
+              eq(productsTable.sku, sku),
+              eq(productsTable.tenantId, tenantId)
+            )
+          ).limit(1);
         const productId = matchedProducts[0]?.id ?? null;
 
         const listingData = {
+          tenantId,
           listingId,
           title: item.product?.title || "Unknown Title",
           sku,
@@ -488,7 +521,12 @@ export async function syncEbayListings(accessToken: string): Promise<{ imported:
           await db.insert(ebayListingsTable).values(listingData);
           imported++;
         } else {
-          await db.update(ebayListingsTable).set(listingData).where(eq(ebayListingsTable.listingId, listingId));
+          await db.update(ebayListingsTable).set(listingData).where(
+            and(
+              eq(ebayListingsTable.listingId, listingId),
+              eq(ebayListingsTable.tenantId, tenantId)
+            )
+          );
           updated++;
         }
       }
@@ -531,6 +569,7 @@ export async function markOrderAsFulfilledOnEbay(ebayOrderId: string, orderId: n
       
       logger.info({ ebayOrderId, status: response.status }, statusMessage);
       await logEvent({
+        tenantId,
         event: "ebay_marked_fulfilled",
         level: "info",
         message: statusMessage,
@@ -542,6 +581,7 @@ export async function markOrderAsFulfilledOnEbay(ebayOrderId: string, orderId: n
       const errorText = await response.text();
       logger.error({ ebayOrderId, status: response.status, error: errorText }, "Failed to mark eBay order fulfilled");
       await logEvent({
+        tenantId,
         event: "ebay_fulfillment_failed",
         level: "error",
         message: `Failed to mark eBay fulfilled: ${response.status} ${errorText}`,
@@ -553,6 +593,7 @@ export async function markOrderAsFulfilledOnEbay(ebayOrderId: string, orderId: n
   } catch (err) {
     logger.error({ err, ebayOrderId }, "Error calling eBay Fulfillment API");
     await logEvent({
+      tenantId,
       event: "ebay_fulfillment_failed",
       level: "error",
       message: `Error marking eBay fulfilled: ${err instanceof Error ? err.message : String(err)}`,

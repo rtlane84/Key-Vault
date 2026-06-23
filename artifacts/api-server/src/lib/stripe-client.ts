@@ -1,12 +1,15 @@
 import Stripe from "stripe";
 
-let stripeClient: Stripe | null = null;
+const clients = new Map<string, Stripe>();
 
-export function getStripe(): Stripe {
-  if (!stripeClient) {
-    const key = process.env.STRIPE_SECRET_KEY;
-    if (!key) throw new Error("STRIPE_SECRET_KEY is not set");
-    stripeClient = new Stripe(key, { apiVersion: "2026-05-27.dahlia" });
+export function getStripe(secretKey?: string): Stripe {
+  const key = secretKey || process.env.STRIPE_SECRET_KEY;
+  if (!key) throw new Error("Stripe secret key not provided or set in ENV");
+
+  let client = clients.get(key);
+  if (!client) {
+    client = new Stripe(key, { apiVersion: "2026-05-27.dahlia" });
+    clients.set(key, client);
   }
-  return stripeClient;
+  return client;
 }

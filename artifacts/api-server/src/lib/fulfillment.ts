@@ -1,5 +1,5 @@
 import { eq, and, sql, inArray } from "drizzle-orm";
-import { db, productsTable, licenseKeysTable, ordersTable, syncLogsTable } from "@workspace/db";
+import { db, productsTable, licenseKeysTable, ordersTable, syncLogsTable, tenantsTable } from "@workspace/db";
 import { sendLicenseEmail } from "./email";
 import { logger } from "./logger";
 import { markOrderAsFulfilledOnEbay } from "./ebay-sync";
@@ -23,7 +23,7 @@ async function logEvent(params: {
   orderId?: number;
   productId?: number;
   keyId?: number;
-  tenantId?: number;
+  tenantId: number;
   meta?: Record<string, unknown>;
 }) {
   try {
@@ -163,6 +163,10 @@ export async function fulfillOrder(input: FulfillmentInput): Promise<Fulfillment
 
     const { order, product, keys } = result;
 
+    // Resolve tenant for email settings
+    const tenants = await db.select().from(tenantsTable).where(eq(tenantsTable.id, order.tenantId)).limit(1);
+    const tenant = tenants[0];
+
     // 2. Send Email
     const emailResult = await sendLicenseEmail({
       to: order.buyerEmail,
@@ -173,6 +177,10 @@ export async function fulfillOrder(input: FulfillmentInput): Promise<Fulfillment
       purchaseDate: order.createdAt,
       activationInstructions: product!.activationInstructions,
       emailTemplate: product!.emailTemplate,
+      // SaaS settings
+      resendApiKey: tenant?.resendApiKey,
+      fromEmail: tenant?.fromEmail,
+      appName: tenant?.name,
     });
 
     if (emailResult.success) {

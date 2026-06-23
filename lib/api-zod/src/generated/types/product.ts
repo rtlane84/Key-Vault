@@ -28,8 +28,6 @@ export interface Product {
   /** @nullable */
   ebayListingId?: string | null;
   /** @nullable */
-  activationInstructions?: string | null;
-  /** @nullable */
   emailTemplate?: string | null;
   lowInventoryThreshold?: number;
   availableKeyCount: number;

@@ -5,6 +5,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import NotFound from "@/pages/not-found";
 import { AppLayout } from "@/components/layout";
 import LoginPage from "@/pages/login";
+import RegisterPage from "@/pages/register";
 import DashboardPage from "@/pages/dashboard";
 import ProductsPage from "@/pages/products";
 import ProductDetailPage from "@/pages/product-detail";
@@ -13,6 +14,7 @@ import EbayPage from "@/pages/ebay";
 import LogsPage from "@/pages/logs";
 import EbayListingsPage from "@/pages/ebay-listings";
 import EbayOrdersPage from "@/pages/ebay-orders";
+import SettingsPage from "@/pages/settings";
 import { isAuthenticated, clearToken } from "@/lib/auth";
 function makeQueryClient() {
   return new QueryClient({
@@ -52,6 +54,7 @@ function Router() {
   return (
     <Switch>
       <Route path="/login" component={LoginPage} />
+      <Route path="/register" component={RegisterPage} />
       
       <Route path="/">
         <ProtectedRoute component={() => (
@@ -113,6 +116,14 @@ function Router() {
         <ProtectedRoute component={() => (
           <AppLayout>
             <LogsPage />
+          </AppLayout>
+        )} />
+      </Route>
+
+      <Route path="/settings">
+        <ProtectedRoute component={() => (
+          <AppLayout>
+            <SettingsPage />
           </AppLayout>
         )} />
       </Route>

@@ -1,39 +1,43 @@
 import { db, ebaySettingsTable } from "@workspace/db";
+import { gt } from "drizzle-orm";
 import { runRealEbaySync } from "./ebay-sync";
 import { logger } from "./logger";
 
 let pollTimeout: NodeJS.Timeout | null = null;
 
 export async function startScheduler() {
-  logger.info("Starting eBay polling scheduler");
-  await scheduleNextTick();
+  logger.info("Starting multi-tenant eBay polling scheduler");
+  await tick();
 }
 
-async function scheduleNextTick() {
+async function tick() {
   try {
-    const settings = await db.select().from(ebaySettingsTable).limit(1);
-    const interval = settings[0]?.pollIntervalMinutes || 0;
+    // Find all tenants with polling enabled
+    const allSettings = await db
+      .select()
+      .from(ebaySettingsTable)
+      .where(gt(ebaySettingsTable.pollIntervalMinutes, 0));
 
-    if (interval <= 0) {
-      logger.info("eBay polling disabled (interval = 0)");
-      // Check again in 1 minute if it has been enabled
-      pollTimeout = setTimeout(scheduleNextTick, 60 * 1000);
-      return;
-    }
+    logger.info(`Checking ${allSettings.length} tenants for scheduled polling`);
 
-    logger.info(`Next eBay poll in ${interval} minutes`);
-    pollTimeout = setTimeout(async () => {
-      try {
-        logger.info("Executing scheduled eBay poll");
-        await runRealEbaySync();
-      } catch (err) {
-        logger.error({ err }, "Scheduled eBay sync failed");
-      } finally {
-        scheduleNextTick();
+    for (const settings of allSettings) {
+      const now = new Date();
+      const lastSync = settings.lastSyncAt || new Date(0);
+      const intervalMs = settings.pollIntervalMinutes * 60 * 1000;
+
+      if (now.getTime() - lastSync.getTime() >= intervalMs) {
+        logger.info({ tenantId: settings.tenantId }, "Executing scheduled eBay poll for tenant");
+        try {
+          await runRealEbaySync(settings.tenantId);
+        } catch (err) {
+          logger.error({ err, tenantId: settings.tenantId }, "Scheduled eBay sync failed for tenant");
+        }
       }
-    }, interval * 60 * 1000);
+    }
   } catch (err) {
-    logger.error({ err }, "Error in scheduler, retrying in 1 minute");
-    pollTimeout = setTimeout(scheduleNextTick, 60 * 1000);
+    logger.error({ err }, "Error in scheduler tick");
+  } finally {
+    // Check every minute
+    pollTimeout = setTimeout(tick, 60 * 1000);
   }
 }

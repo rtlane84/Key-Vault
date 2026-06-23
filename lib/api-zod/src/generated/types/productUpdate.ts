@@ -20,6 +20,8 @@ export interface ProductUpdate {
   /** @nullable */
   imageUrl?: string | null;
   /** @nullable */
+  activationInstructions?: string | null;
+  /** @nullable */
   category?: string | null;
   active?: boolean;
   /** @nullable */
@@ -28,8 +30,6 @@ export interface ProductUpdate {
   stripePriceId?: string | null;
   /** @nullable */
   ebayListingId?: string | null;
-  /** @nullable */
-  activationInstructions?: string | null;
   /** @nullable */
   emailTemplate?: string | null;
   /** @minimum 0 */

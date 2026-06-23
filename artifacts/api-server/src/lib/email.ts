@@ -21,6 +21,10 @@ export interface SendLicenseEmailParams {
   purchaseDate: Date;
   activationInstructions?: string | null;
   emailTemplate?: string | null;
+  // SaaS
+  resendApiKey?: string | null;
+  fromEmail?: string | null;
+  appName?: string | null;
 }
 
 function renderTemplate(template: string, vars: Record<string, string>): string {
@@ -46,6 +50,10 @@ Best regards,
 {{appName}}`;
 
 export async function sendLicenseEmail(params: SendLicenseEmailParams): Promise<{ success: boolean; error?: string }> {
+  const apiKey = params.resendApiKey || process.env.RESEND_API_KEY;
+  const fromEmail = params.fromEmail || process.env.FROM_EMAIL || "delivery@yourdomain.com";
+  const appName = params.appName || process.env.APP_NAME || "Key Delivery";
+
   const vars = {
     buyerName: params.buyerName ?? "Customer",
     productName: params.productName,
@@ -57,16 +65,17 @@ export async function sendLicenseEmail(params: SendLicenseEmailParams): Promise<
       month: "long",
       day: "numeric",
     }),
-    appName: APP_NAME,
+    appName: appName,
   };
 
   const bodyText = renderTemplate(params.emailTemplate ?? DEFAULT_TEMPLATE, vars);
 
-  if (!RESEND_API_KEY) {
-    logger.info("RESEND_API_KEY not set — SIMULATING email send");
+  if (!apiKey) {
+    logger.info("Resend API key not set — SIMULATING email send");
     logger.info(`
 ------------------------------------------------------------
 SIMULATED EMAIL TO: ${params.to}
+FROM: ${fromEmail}
 SUBJECT: Your ${params.productName} License Key — Order #${params.orderId}
 BODY:
 ${bodyText}
@@ -86,7 +95,7 @@ ${bodyText}
 <body style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 0; background-color: #f9fafb;">
   <div style="background-color: #ffffff; margin: 20px auto; padding: 40px; border-radius: 8px; border: 1px solid #e5e7eb; box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1);">
     <div style="text-align: center; margin-bottom: 32px;">
-      <h1 style="color: #0284c7; font-size: 24px; font-weight: 700; margin: 0;">${APP_NAME}</h1>
+      <h1 style="color: #0284c7; font-size: 24px; font-weight: 700; margin: 0;">${appName}</h1>
     </div>
     
     <div style="margin-bottom: 32px;">
@@ -127,20 +136,20 @@ ${bodyText}
     </div>
 
     <div style="background: #fffbeb; border: 1px solid #fef3c7; border-radius: 8px; padding: 16px; margin-bottom: 32px;">
-      <p style="font-size: 14px; color: #92400e; margin: 0;"><strong>Need help?</strong> If you have any issues with your key or need support, simply reply to this email or contact us at <a href="mailto:${FROM_EMAIL}" style="color: #b45309; text-decoration: underline;">${FROM_EMAIL}</a>.</p>
+      <p style="font-size: 14px; color: #92400e; margin: 0;"><strong>Need help?</strong> If you have any issues with your key or need support, simply reply to this email or contact us at <a href="mailto:${fromEmail}" style="color: #b45309; text-decoration: underline;">${fromEmail}</a>.</p>
     </div>
 
     <div style="text-align: center; font-size: 13px; color: #9ca3af;">
-      <p style="margin: 0 0 8px 0;">&copy; ${new Date().getFullYear()} ${APP_NAME}. All rights reserved.</p>
+      <p style="margin: 0 0 8px 0;">&copy; ${new Date().getFullYear()} ${appName}. All rights reserved.</p>
     </div>
   </div>
 </body>
 </html>`;
 
   try {
-    const resend = getResend();
+    const resend = new Resend(apiKey);
     const result = await resend.emails.send({
-      from: FROM_EMAIL,
+      from: fromEmail,
       to: params.to,
       subject: `Your ${params.productName} License Key — Order #${params.orderId}`,
       text: bodyText,

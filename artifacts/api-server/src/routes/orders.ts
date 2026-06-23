@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { eq, and } from "drizzle-orm";
-import { db, ordersTable, productsTable, licenseKeysTable, syncLogsTable } from "@workspace/db";
+import { db, ordersTable, productsTable, licenseKeysTable, syncLogsTable, tenantsTable } from "@workspace/db";
 import {
   CreateOrderBody,
   ListOrdersQueryParams,
@@ -241,8 +241,17 @@ router.post("/orders/:id/resend-email", async (req, res): Promise<void> => {
     return;
   }
 
-  const products = await db.select().from(productsTable).where(eq(productsTable.id, order.productId)).limit(1);
+  const products = await db.select().from(productsTable).where(
+    and(
+      eq(productsTable.id, order.productId),
+      eq(productsTable.tenantId, tenantId)
+    )
+  ).limit(1);
   const product = products[0];
+
+  // Resolve tenant settings for email
+  const tenants = await db.select().from(tenantsTable).where(eq(tenantsTable.id, tenantId)).limit(1);
+  const tenant = tenants[0];
 
   const result = await sendLicenseEmail({
     to: order.buyerEmail,
@@ -253,10 +262,15 @@ router.post("/orders/:id/resend-email", async (req, res): Promise<void> => {
     purchaseDate: order.fulfilledAt ?? order.createdAt,
     activationInstructions: product?.activationInstructions,
     emailTemplate: product?.emailTemplate,
+    // SaaS
+    resendApiKey: tenant?.resendApiKey,
+    fromEmail: tenant?.fromEmail,
+    appName: tenant?.name,
   });
 
   if (result.success) {
     await db.insert(syncLogsTable).values({
+      tenantId,
       event: "resend_email_success",
       level: "info",
       message: result.error === "SIMULATED" 
@@ -267,6 +281,7 @@ router.post("/orders/:id/resend-email", async (req, res): Promise<void> => {
     });
   } else {
     await db.insert(syncLogsTable).values({
+      tenantId,
       event: "resend_email_failed",
       level: "error",
       message: `Failed to resend license email for order #${order.id}: ${result.error}`,
