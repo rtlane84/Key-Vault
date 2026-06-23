@@ -459,6 +459,45 @@ paths:
         "400":
           description: Product has no Stripe Price ID
 
+  # Stripe Connect
+  /stripe/connect:
+    post:
+      operationId: stripeConnect
+      tags: [stripe]
+      summary: Get Stripe Connect URL
+      responses:
+        "200":
+          description: Stripe Connect URL
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  url:
+                    type: string
+        "400":
+          description: Client not configured
+
+  /stripe/callback:
+    get:
+      operationId: stripeCallback
+      tags: [stripe]
+      summary: Stripe Connect callback
+      parameters:
+        - name: code
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: state
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        "302":
+          description: Redirect to dashboard
+
   /stripe/webhook:
     post:
       operationId: stripeWebhook
@@ -1141,6 +1180,9 @@ components:
           type: string
           nullable: true
         supportEmail:
+          type: string
+          nullable: true
+        stripeUserId:
           type: string
           nullable: true
 

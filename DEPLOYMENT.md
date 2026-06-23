@@ -51,10 +51,19 @@ You will need two separate Vercel projects: one for the Dashboard and one for th
 ## 4. External Service Configuration
 
 ### Stripe
-1.  Go to **Stripe Dashboard** -> **Developers** -> **Webhooks**.
-2.  Add an endpoint: `https://your-api-url.railway.app/api/stripe/webhook`.
-3.  Select events: `checkout.session.completed`.
-4.  Copy the **Signing Secret** and add it as `STRIPE_WEBHOOK_SECRET` in Railway.
+1.  **Platform Setup**:
+    - Go to **Stripe Dashboard** -> **Connect** -> **Settings**.
+    - Complete your platform profile.
+    - Copy your **Client ID** (`ca_...`) and add it as `STRIPE_CLIENT_ID` in your API environment variables.
+2.  **Redirect URI**:
+    - Add `https://your-api-url.railway.app/api/stripe/callback` to your Stripe Connect redirect URIs.
+3.  **Webhook**:
+    - Go to **Stripe Dashboard** -> **Developers** -> **Webhooks**.
+    - Add an endpoint: `https://your-api-url.railway.app/api/stripe/webhook`.
+    - Select events: `checkout.session.completed`.
+    - Copy the **Signing Secret** and add it as `STRIPE_WEBHOOK_SECRET` in Railway.
+4.  **Seller Onboarding**:
+    - Sellers can now go to the **Settings** page in their Dashboard and click "Connect Stripe" to automatically link their account and receive payments.
 
 ### Resend
 1.  Go to [Resend](https://resend.com/) and verify your domain.

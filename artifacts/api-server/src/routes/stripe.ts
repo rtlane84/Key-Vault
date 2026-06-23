@@ -6,6 +6,9 @@ import { fulfillOrder } from "../lib/fulfillment";
 import { logger } from "../lib/logger";
 import { CreateCheckoutSessionBody } from "@workspace/api-zod";
 
+import jwt from "jsonwebtoken";
+const JWT_SECRET = process.env.JWT_SECRET ?? "dev-secret-change-in-production";
+
 const router: IRouter = Router();
 
 router.post("/stripe/checkout", async (req, res): Promise<void> => {
@@ -29,7 +32,7 @@ router.post("/stripe/checkout", async (req, res): Promise<void> => {
   const tenants = await db.select().from(tenantsTable).where(eq(tenantsTable.id, product.tenantId)).limit(1);
   const tenant = tenants[0];
 
-  if (!tenant || !tenant.stripeSecretKey) {
+  if (!tenant || (!tenant.stripeSecretKey && !tenant.stripeUserId)) {
     res.status(500).json({ error: "Seller Stripe configuration missing" });
     return;
   }
@@ -56,8 +59,8 @@ router.post("/stripe/checkout", async (req, res): Promise<void> => {
     return;
   }
 
-  const stripe = getStripe(tenant.stripeSecretKey);
-  const session = await stripe.checkout.sessions.create({
+  const stripe = getStripe(tenant.stripeSecretKey ?? undefined);
+  const checkoutOptions: any = {
     mode: "payment",
     line_items: [{
       price_data: {
@@ -78,9 +81,165 @@ router.post("/stripe/checkout", async (req, res): Promise<void> => {
       productSlug: product.slug,
       tenantId: String(product.tenantId)
     },
-  });
+  };
+
+  // If using Stripe Connect, collect fees or direct payment
+  if (tenant.stripeUserId && !tenant.stripeSecretKey) {
+    checkoutOptions.payment_intent_data = {
+      application_fee_amount: 0, // Optional: add platform fee in cents
+      transfer_data: {
+        destination: tenant.stripeUserId,
+      },
+    };
+  }
+
+  const session = await stripe.checkout.sessions.create(checkoutOptions);
 
   res.json({ url: session.url });
+});
+
+router.post("/stripe/connect", async (req, res): Promise<void> => {
+  const tenantId = (req as any).tenantId;
+  const userId = (req as any).userId;
+  const authHeader = req.headers.authorization;
+
+  logger.info({ 
+    tenantId, 
+    userId, 
+    hasAuth: !!authHeader,
+    authPrefix: authHeader?.substring(0, 15)
+  }, "Stripe Connect: Request received");
+
+  if (!tenantId) {
+    logger.error("Stripe Connect: req.tenantId is missing from request. Ensure requireAuth middleware is active and token is valid.");
+    res.status(401).json({ error: "Unauthorized: Tenant ID missing" });
+    return;
+  }
+
+  const clientId = process.env.STRIPE_CLIENT_ID;
+
+  if (!clientId) {
+    res.status(400).json({ error: "Stripe Connect not configured on server" });
+    return;
+  }
+
+  const redirectUri = `${process.env.VITE_API_URL}/api/stripe/callback`;
+  
+  // Generate a signed state token containing tenantId
+  // This avoids reliance on cookies which can fail across different ngrok/localhost hosts
+  const state = jwt.sign(
+    { 
+      tenantId: Number(tenantId), 
+      nonce: Math.random().toString(36).slice(2) 
+    }, 
+    JWT_SECRET, 
+    { expiresIn: "10m" }
+  );
+
+  logger.info({ tenantId: Number(tenantId) }, "Stripe Connect: Starting OAuth flow");
+
+  const url = `https://connect.stripe.com/oauth/authorize?response_type=code&client_id=${clientId}&scope=read_write&redirect_uri=${encodeURIComponent(redirectUri)}&state=${state}`;
+
+  res.json({ url });
+});
+
+router.get("/stripe/callback", async (req, res): Promise<void> => {
+  const { code, state, error, error_description } = req.query;
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? process.env.APP_URL ?? "http://localhost:3001";
+  
+  if (error) {
+    logger.warn({ error, error_description }, "Stripe Connect callback error");
+    res.redirect(`${appUrl}/settings?stripe_error=1`);
+    return;
+  }
+
+  if (!code || !state || typeof state !== "string") {
+    logger.warn({ 
+      hasCode: !!code, 
+      hasState: !!state 
+    }, "Stripe Connect callback missing params");
+    res.redirect(`${appUrl}/settings?stripe_error=missing_params`);
+    return;
+  }
+
+  let tenantId: number;
+  try {
+    const decoded = jwt.verify(state, JWT_SECRET) as any;
+    
+    if (!decoded.tenantId) {
+      logger.error({ state }, "Stripe Connect callback: tenantId missing from decoded JWT state");
+      res.redirect(`${appUrl}/settings?stripe_error=invalid_state`);
+      return;
+    }
+
+    tenantId = Number(decoded.tenantId);
+    
+    if (isNaN(tenantId) || tenantId <= 0) {
+      logger.error({ tenantId, raw: decoded.tenantId }, "Stripe Connect callback: tenantId is not a valid positive integer");
+      res.redirect(`${appUrl}/settings?stripe_error=invalid_state`);
+      return;
+    }
+
+    logger.info({ 
+      tenantId, 
+      decodedType: typeof decoded.tenantId,
+      rawDecodedTenantId: decoded.tenantId 
+    }, "Stripe Connect callback: decoded tenantId from state");
+  } catch (err) {
+    logger.warn({ err }, "Stripe Connect callback invalid or expired state");
+    res.redirect(`${appUrl}/settings?stripe_error=invalid_state`);
+    return;
+  }
+
+  const stripe = getStripe();
+
+  try {
+    logger.info({ code: code ? "REDACTED" : "MISSING" }, "Stripe Connect callback: exchanging code for token");
+    const response = await stripe.oauth.token({
+      grant_type: "authorization_code",
+      code: code as string,
+    });
+
+    logger.info({ 
+      stripe_user_id: response.stripe_user_id,
+      stripe_publishable_key: response.stripe_publishable_key,
+      access_token: response.access_token ? "PRESENT" : "MISSING"
+    }, "Stripe Connect callback: token exchange successful");
+
+    logger.info({ tenantId, stripe_user_id: response.stripe_user_id }, "Stripe Connect callback: updating tenant row");
+    
+    const updateResult = await db.update(tenantsTable)
+      .set({
+        stripeUserId: String(response.stripe_user_id),
+      })
+      .where(eq(tenantsTable.id, Number(tenantId)))
+      .returning();
+
+    logger.info({ 
+      rowsAffected: updateResult.length,
+      updatedTenantId: updateResult[0]?.id,
+      newStripeUserId: updateResult[0]?.stripeUserId 
+    }, "Stripe Connect callback: update execution result");
+
+    if (updateResult.length === 0) {
+      const allTenants = await db.select({ id: tenantsTable.id }).from(tenantsTable);
+      logger.error({ 
+        tenantIdAttempted: Number(tenantId), 
+        existingTenantIds: allTenants.map(t => t.id) 
+      }, "Stripe Connect callback: NO ROWS UPDATED");
+    } else {
+      // Re-query to be absolutely sure
+      const verified = await db.select().from(tenantsTable).where(eq(tenantsTable.id, Number(tenantId))).limit(1);
+      logger.info({ 
+        verifiedStripeUserId: verified[0]?.stripeUserId 
+      }, "Stripe Connect callback: post-update verification");
+    }
+
+    res.redirect(`${appUrl}/settings?stripe_success=1`);
+  } catch (err) {
+    logger.error({ err }, "Stripe OAuth token exchange failed");
+    res.redirect(`${appUrl}/settings?stripe_error=token_exchange_failed`);
+  }
 });
 
 // Raw body is required for Stripe webhook signature verification

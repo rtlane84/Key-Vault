@@ -329,6 +329,7 @@ export interface Tenant {
   resendApiKey?: string | null;
   fromEmail?: string | null;
   supportEmail?: string | null;
+  stripeUserId?: string | null;
 }
 
 export interface TenantUpdate {
@@ -472,6 +473,15 @@ export const ListOrdersSource = {
   ebay: 'ebay',
   stripe: 'stripe',
 } as const;
+
+export type StripeConnect200 = {
+  url?: string;
+};
+
+export type StripeCallbackParams = {
+code?: string;
+state?: string;
+};
 
 export type ListEbayListingsParams = {
 mapped?: boolean;

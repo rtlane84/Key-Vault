@@ -52,6 +52,8 @@ import type {
   RegisterInput,
   RegisterResult,
   ResendEmailResult,
+  StripeCallbackParams,
+  StripeConnect200,
   SyncLog,
   SyncResult,
   Tenant,
@@ -1696,6 +1698,160 @@ export const useCreateCheckoutSession = <TError = ErrorType<void>,
       > => {
       return useMutation(getCreateCheckoutSessionMutationOptions(options));
     }
+
+export const getStripeConnectUrl = () => {
+
+
+
+
+  return `/api/stripe/connect`
+}
+
+/**
+ * @summary Get Stripe Connect URL
+ */
+export const stripeConnect = async ( options?: RequestInit): Promise<StripeConnect200> => {
+
+  return customFetch<StripeConnect200>(getStripeConnectUrl(),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+export const getStripeConnectMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof stripeConnect>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof stripeConnect>>, TError,void, TContext> => {
+
+const mutationKey = ['stripeConnect'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof stripeConnect>>, void> = () => {
+
+
+          return  stripeConnect(requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type StripeConnectMutationResult = NonNullable<Awaited<ReturnType<typeof stripeConnect>>>
+
+    export type StripeConnectMutationError = ErrorType<void>
+
+    /**
+ * @summary Get Stripe Connect URL
+ */
+export const useStripeConnect = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof stripeConnect>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof stripeConnect>>,
+        TError,
+        void,
+        TContext
+      > => {
+      return useMutation(getStripeConnectMutationOptions(options));
+    }
+
+export const getStripeCallbackUrl = (params?: StripeCallbackParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : value.toString())
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/stripe/callback?${stringifiedParams}` : `/api/stripe/callback`
+}
+
+/**
+ * @summary Stripe Connect callback
+ */
+export const stripeCallback = async (params?: StripeCallbackParams, options?: RequestInit): Promise<unknown> => {
+
+  return customFetch<unknown>(getStripeCallbackUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getStripeCallbackQueryKey = (params?: StripeCallbackParams,) => {
+    return [
+    `/api/stripe/callback`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getStripeCallbackQueryOptions = <TData = Awaited<ReturnType<typeof stripeCallback>>, TError = ErrorType<void>>(params?: StripeCallbackParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof stripeCallback>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getStripeCallbackQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof stripeCallback>>> = ({ signal }) => stripeCallback(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof stripeCallback>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type StripeCallbackQueryResult = NonNullable<Awaited<ReturnType<typeof stripeCallback>>>
+export type StripeCallbackQueryError = ErrorType<void>
+
+
+/**
+ * @summary Stripe Connect callback
+ */
+
+export function useStripeCallback<TData = Awaited<ReturnType<typeof stripeCallback>>, TError = ErrorType<void>>(
+ params?: StripeCallbackParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof stripeCallback>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getStripeCallbackQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
 
 export const getStripeWebhookUrl = () => {
 

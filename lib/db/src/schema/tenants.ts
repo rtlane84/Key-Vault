@@ -7,6 +7,7 @@ export const tenantsTable = pgTable("tenants", {
   name: text("name").notNull(),
   slug: text("slug").notNull().unique(),
   status: text("status").notNull().default("active"), // active | suspended | deleted
+  stripeUserId: text("stripe_user_id"), // Stripe Connect Account ID
   // Integration Settings (moved from ENV)
   stripeSecretKey: text("stripe_secret_key"),
   stripeWebhookSecret: text("stripe_webhook_secret"),

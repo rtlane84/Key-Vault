@@ -48,6 +48,8 @@ export * from './publicProduct';
 export * from './registerInput';
 export * from './registerResult';
 export * from './resendEmailResult';
+export * from './stripeCallbackParams';
+export * from './stripeConnect200';
 export * from './syncLog';
 export * from './syncLogLevel';
 export * from './syncResult';

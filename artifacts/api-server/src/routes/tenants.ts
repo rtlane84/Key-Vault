@@ -15,7 +15,17 @@ router.get("/tenants/me", async (req, res): Promise<void> => {
     return;
   }
 
-  res.json(tenants[0]);
+  const tenant = tenants[0];
+  // Sanitize sensitive fields for display in settings
+  // Return masked version of keys if they exist
+  const sanitized = {
+    ...tenant,
+    stripeSecretKey: tenant.stripeSecretKey ? "sk_••••••••" : null,
+    stripeWebhookSecret: tenant.stripeWebhookSecret ? "whsec_••••••••" : null,
+    resendApiKey: tenant.resendApiKey ? "re_••••••••" : null,
+  };
+
+  res.json(sanitized);
 });
 
 router.patch("/tenants/me", async (req, res): Promise<void> => {
@@ -27,12 +37,16 @@ router.patch("/tenants/me", async (req, res): Promise<void> => {
     return;
   }
 
+  const data: any = { ...parsed.data, updatedAt: new Date() };
+
+  // Don't overwrite with masked values
+  if (data.stripeSecretKey?.includes("•")) delete data.stripeSecretKey;
+  if (data.stripeWebhookSecret?.includes("•")) delete data.stripeWebhookSecret;
+  if (data.resendApiKey?.includes("•")) delete data.resendApiKey;
+
   const [updated] = await db
     .update(tenantsTable)
-    .set({
-      ...parsed.data,
-      updatedAt: new Date(),
-    })
+    .set(data)
     .where(eq(tenantsTable.id, tenantId))
     .returning();
 

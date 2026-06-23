@@ -52,7 +52,8 @@ export const GetMyTenantResponse = zod.object({
   "stripeWebhookSecret": zod.string().nullish(),
   "resendApiKey": zod.string().nullish(),
   "fromEmail": zod.string().nullish(),
-  "supportEmail": zod.string().nullish()
+  "supportEmail": zod.string().nullish(),
+  "stripeUserId": zod.string().nullish()
 })
 
 
@@ -77,7 +78,8 @@ export const UpdateMyTenantResponse = zod.object({
   "stripeWebhookSecret": zod.string().nullish(),
   "resendApiKey": zod.string().nullish(),
   "fromEmail": zod.string().nullish(),
-  "supportEmail": zod.string().nullish()
+  "supportEmail": zod.string().nullish(),
+  "stripeUserId": zod.string().nullish()
 })
 
 
@@ -444,6 +446,23 @@ export const CreateCheckoutSessionBody = zod.object({
 
 export const CreateCheckoutSessionResponse = zod.object({
   "url": zod.string()
+})
+
+
+/**
+ * @summary Get Stripe Connect URL
+ */
+export const StripeConnectResponse = zod.object({
+  "url": zod.string().optional()
+})
+
+
+/**
+ * @summary Stripe Connect callback
+ */
+export const StripeCallbackQueryParams = zod.object({
+  "code": zod.coerce.string().optional(),
+  "state": zod.coerce.string().optional()
 })
 
 

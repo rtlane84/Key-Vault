@@ -16,4 +16,5 @@ export interface Tenant {
   resendApiKey?: string | null;
   fromEmail?: string | null;
   supportEmail?: string | null;
+  stripeUserId?: string | null;
 }
