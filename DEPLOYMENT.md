@@ -26,9 +26,15 @@ The following environment variables are required for the production environment:
 `STRIPE_WEBHOOK_SECRET`: Secret for verifying Stripe webhooks.
 
 ### Email (Resend)
-`RESEND_API_KEY`: Your Resend API key. If omitted, the system will log emails to the console in "SIMULATED" mode instead of sending them.
-`FROM_EMAIL`: The email address keys will be sent from (must be verified in Resend).
-`APP_NAME`: (Optional) Your application name used in email templates.
+`RESEND_API_KEY`: Your Resend API key (`re_...`). If omitted, the system will log emails to the console in "SIMULATED" mode instead of sending them.
+`FROM_EMAIL`: The email address keys will be sent from (must be a domain verified in your Resend account).
+`APP_NAME`: (Optional) Your application name used in email templates (default: "Key Delivery").
+
+### Verification
+Once configured, you can test email delivery by:
+1. Creating a manual order in the dashboard and fulfilling it.
+2. Using the "Resend" button on any fulfilled order in the Orders page.
+3. Checking the "Logs" page for `resend_email_success` or `resend_email_failed` events.
 
 ### eBay
 `EBAY_CLIENT_ID`: eBay App ID (Client ID).

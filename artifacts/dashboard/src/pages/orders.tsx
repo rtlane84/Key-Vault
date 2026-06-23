@@ -6,12 +6,13 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { ShoppingCart, Plus, RefreshCw } from "lucide-react";
+import { ShoppingCart, Plus, RefreshCw, Mail } from "lucide-react";
 import {
   useListOrders,
   useListProducts,
   useCreateOrder,
   useFulfillOrder,
+  useResendOrderEmail,
   getListOrdersQueryKey,
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
@@ -111,6 +112,7 @@ export default function OrdersPage() {
   if (sourceFilter !== "all") params.source = sourceFilter as "manual" | "ebay" | "stripe";
 
   const { data: orders, isLoading } = useListOrders(Object.keys(params).length ? params : undefined);
+  const resendEmail = useResendOrderEmail();
 
   const handleFulfill = async (orderId: number) => {
     try {
@@ -120,6 +122,20 @@ export default function OrdersPage() {
       queryClient.invalidateQueries({ queryKey: DASHBOARD_STATS_KEY });
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Fulfillment failed";
+      toast({ title: msg, variant: "destructive" });
+    }
+  };
+
+  const handleResendEmail = async (orderId: number) => {
+    try {
+      const result = await resendEmail.mutateAsync({ id: orderId });
+      if (result.success) {
+        toast({ title: "Email sent successfully" });
+      } else {
+        toast({ title: result.error || "Failed to send email", variant: "destructive" });
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Failed to send email";
       toast({ title: msg, variant: "destructive" });
     }
   };
@@ -216,16 +232,29 @@ export default function OrdersPage() {
                       {format(new Date(order.createdAt), "MMM d, HH:mm")}
                     </td>
                     <td className="px-4 py-3 text-right">
-                      {(order.status === "failed" || order.status === "pending") && (
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => handleFulfill(order.id)}
-                          disabled={fulfillOrder.isPending}
-                        >
-                          <RefreshCw className="h-3.5 w-3.5 mr-1.5" />Fulfill
-                        </Button>
-                      )}
+                      <div className="flex justify-end gap-2">
+                        {order.status === "fulfilled" && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleResendEmail(order.id)}
+                            disabled={resendEmail.isPending}
+                            title="Resend license email"
+                          >
+                            <Mail className="h-3.5 w-3.5 mr-1.5" />Resend
+                          </Button>
+                        )}
+                        {(order.status === "failed" || order.status === "pending") && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleFulfill(order.id)}
+                            disabled={fulfillOrder.isPending}
+                          >
+                            <RefreshCw className="h-3.5 w-3.5 mr-1.5" />Fulfill
+                          </Button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))}

@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { eq, and } from "drizzle-orm";
-import { db, ordersTable, productsTable, licenseKeysTable } from "@workspace/db";
+import { db, ordersTable, productsTable, licenseKeysTable, syncLogsTable } from "@workspace/db";
 import {
   CreateOrderBody,
   ListOrdersQueryParams,
@@ -178,6 +178,26 @@ router.post("/orders/:id/resend-email", async (req, res): Promise<void> => {
     purchaseDate: order.fulfilledAt ?? order.createdAt,
     emailTemplate: product?.emailTemplate,
   });
+
+  if (result.success) {
+    await db.insert(syncLogsTable).values({
+      event: "resend_email_success",
+      level: "info",
+      message: result.error === "SIMULATED" 
+        ? `Resent license email for order #${order.id} (SIMULATED)`
+        : `Resent license email for order #${order.id} to ${order.buyerEmail}`,
+      orderId: order.id,
+      productId: order.productId,
+    });
+  } else {
+    await db.insert(syncLogsTable).values({
+      event: "resend_email_failed",
+      level: "error",
+      message: `Failed to resend license email for order #${order.id}: ${result.error}`,
+      orderId: order.id,
+      productId: order.productId,
+    });
+  }
 
   res.json({ success: result.success, error: result.error ?? null });
 });
