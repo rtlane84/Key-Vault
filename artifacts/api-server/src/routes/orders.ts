@@ -293,39 +293,28 @@ router.post("/orders/:id/resend-email", async (req, res): Promise<void> => {
   res.json({ success: result.success, error: result.error ?? null });
 });
 
-router.get("/orders/lookup", async (req, res): Promise<void> => {
+router.get("/public/tenants/:slug/orders/lookup", async (req, res): Promise<void> => {
+  const { slug } = req.params;
   const { email, reference } = req.query;
+
   if (!email || !reference) {
     res.status(400).json({ error: "Email and reference are required" });
     return;
   }
 
-  // Find order where email matches AND (id = reference OR stripeSessionId = reference OR ebayOrderId = reference)
-  // To avoid SQL injection and type issues, we handle id carefully
-  let orderId: number | undefined = undefined;
-  if (/^\d+$/.test(reference as string)) {
-    orderId = parseInt(reference as string, 10);
+  // Resolve tenant
+  const tenants = await db.select().from(tenantsTable).where(eq(tenantsTable.slug, slug)).limit(1);
+  if (tenants.length === 0) {
+    res.status(404).json({ error: "Tenant not found" });
+    return;
   }
+  const tenantId = tenants[0].id;
 
-  let query = db.select().from(ordersTable).where(eq(ordersTable.buyerEmail, email as string)).$dynamic();
-
-  const conditions = [];
-  if (orderId !== undefined) conditions.push(eq(ordersTable.id, orderId));
-  conditions.push(eq(ordersTable.stripeSessionId, reference as string));
-  conditions.push(eq(ordersTable.ebayOrderId, reference as string));
-
-  const rows = await query.where(and(
-    eq(ordersTable.buyerEmail, email as string),
-    // Use or for the references
-    // drizzle or condition
-  )).limit(1);
-  
-  // Refined query for lookup
+  // Find order where email matches AND tenant matches AND (id = reference OR stripeSessionId = reference OR ebayOrderId = reference)
   const results = await db.select().from(ordersTable).where(
     and(
+      eq(ordersTable.tenantId, tenantId),
       eq(ordersTable.buyerEmail, email as string),
-      // We need to match one of the reference fields
-      // Using a manual approach for simplicity since it's just one row
     )
   );
 
@@ -336,7 +325,7 @@ router.get("/orders/lookup", async (req, res): Promise<void> => {
   );
 
   if (!found) {
-    res.status(404).json({ error: "Order not found with provided email and reference" });
+    res.status(404).json({ error: "Order not found with provided details" });
     return;
   }
 

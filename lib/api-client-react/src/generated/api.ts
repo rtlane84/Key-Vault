@@ -43,8 +43,10 @@ import type {
   ListSyncLogsParams,
   LoginInput,
   LoginResult,
+  LookupOrderParams,
   Order,
   OrderInput,
+  OrderLookupResult,
   Product,
   ProductInput,
   ProductUpdate,
@@ -58,7 +60,8 @@ import type {
   SyncLog,
   SyncResult,
   Tenant,
-  TenantUpdate
+  TenantUpdate,
+  VerifyResend200
 } from './api.schemas';
 
 import { customFetch } from '../custom-fetch';
@@ -440,6 +443,76 @@ export const useUpdateMyTenant = <TError = ErrorType<unknown>,
       return useMutation(getUpdateMyTenantMutationOptions(options));
     }
 
+export const getVerifyResendUrl = () => {
+
+
+
+
+  return `/api/tenants/verify-resend`
+}
+
+/**
+ * @summary Verify Resend API Key by sending a test email
+ */
+export const verifyResend = async ( options?: RequestInit): Promise<VerifyResend200> => {
+
+  return customFetch<VerifyResend200>(getVerifyResendUrl(),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+export const getVerifyResendMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof verifyResend>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof verifyResend>>, TError,void, TContext> => {
+
+const mutationKey = ['verifyResend'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof verifyResend>>, void> = () => {
+
+
+          return  verifyResend(requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type VerifyResendMutationResult = NonNullable<Awaited<ReturnType<typeof verifyResend>>>
+
+    export type VerifyResendMutationError = ErrorType<void>
+
+    /**
+ * @summary Verify Resend API Key by sending a test email
+ */
+export const useVerifyResend = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof verifyResend>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof verifyResend>>,
+        TError,
+        void,
+        TContext
+      > => {
+      return useMutation(getVerifyResendMutationOptions(options));
+    }
+
 export const getGetPublicTenantUrl = (slug: string,) => {
 
 
@@ -582,6 +655,177 @@ export function useListTenantProducts<TData = Awaited<ReturnType<typeof listTena
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getListTenantProductsQueryOptions(slug,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getLookupOrderUrl = (slug: string,
+    params: LookupOrderParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : value.toString())
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/public/tenants/${slug}/orders/lookup?${stringifiedParams}` : `/api/public/tenants/${slug}/orders/lookup`
+}
+
+/**
+ * @summary Customer order lookup (public)
+ */
+export const lookupOrder = async (slug: string,
+    params: LookupOrderParams, options?: RequestInit): Promise<OrderLookupResult> => {
+
+  return customFetch<OrderLookupResult>(getLookupOrderUrl(slug,params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getLookupOrderQueryKey = (slug: string,
+    params?: LookupOrderParams,) => {
+    return [
+    `/api/public/tenants/${slug}/orders/lookup`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getLookupOrderQueryOptions = <TData = Awaited<ReturnType<typeof lookupOrder>>, TError = ErrorType<void>>(slug: string,
+    params: LookupOrderParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof lookupOrder>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getLookupOrderQueryKey(slug,params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof lookupOrder>>> = ({ signal }) => lookupOrder(slug,params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(slug), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof lookupOrder>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type LookupOrderQueryResult = NonNullable<Awaited<ReturnType<typeof lookupOrder>>>
+export type LookupOrderQueryError = ErrorType<void>
+
+
+/**
+ * @summary Customer order lookup (public)
+ */
+
+export function useLookupOrder<TData = Awaited<ReturnType<typeof lookupOrder>>, TError = ErrorType<void>>(
+ slug: string,
+    params: LookupOrderParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof lookupOrder>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getLookupOrderQueryOptions(slug,params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getGetPublicProductUrl = (slug: string,
+    productSlug: string,) => {
+
+
+
+
+  return `/api/public/tenants/${slug}/products/${productSlug}`
+}
+
+/**
+ * @summary Get a public product by slug for a specific tenant
+ */
+export const getPublicProduct = async (slug: string,
+    productSlug: string, options?: RequestInit): Promise<PublicProduct> => {
+
+  return customFetch<PublicProduct>(getGetPublicProductUrl(slug,productSlug),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetPublicProductQueryKey = (slug: string,
+    productSlug: string,) => {
+    return [
+    `/api/public/tenants/${slug}/products/${productSlug}`
+    ] as const;
+    }
+
+
+export const getGetPublicProductQueryOptions = <TData = Awaited<ReturnType<typeof getPublicProduct>>, TError = ErrorType<void>>(slug: string,
+    productSlug: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getPublicProduct>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetPublicProductQueryKey(slug,productSlug);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getPublicProduct>>> = ({ signal }) => getPublicProduct(slug,productSlug, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(slug && productSlug), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getPublicProduct>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetPublicProductQueryResult = NonNullable<Awaited<ReturnType<typeof getPublicProduct>>>
+export type GetPublicProductQueryError = ErrorType<void>
+
+
+/**
+ * @summary Get a public product by slug for a specific tenant
+ */
+
+export function useGetPublicProduct<TData = Awaited<ReturnType<typeof getPublicProduct>>, TError = ErrorType<void>>(
+ slug: string,
+    productSlug: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getPublicProduct>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetPublicProductQueryOptions(slug,productSlug,options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 
@@ -1037,83 +1281,6 @@ export const useDeleteProduct = <TError = ErrorType<void>,
       > => {
       return useMutation(getDeleteProductMutationOptions(options));
     }
-
-export const getGetProductBySlugUrl = (slug: string,) => {
-
-
-
-
-  return `/api/products/${slug}/by-slug`
-}
-
-/**
- * @summary Get a public product by slug (no auth)
- */
-export const getProductBySlug = async (slug: string, options?: RequestInit): Promise<PublicProduct> => {
-
-  return customFetch<PublicProduct>(getGetProductBySlugUrl(slug),
-  {
-    ...options,
-    method: 'GET'
-
-
-  }
-);}
-
-
-
-
-
-export const getGetProductBySlugQueryKey = (slug: string,) => {
-    return [
-    `/api/products/${slug}/by-slug`
-    ] as const;
-    }
-
-
-export const getGetProductBySlugQueryOptions = <TData = Awaited<ReturnType<typeof getProductBySlug>>, TError = ErrorType<void>>(slug: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getProductBySlug>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
-) => {
-
-const {query: queryOptions, request: requestOptions} = options ?? {};
-
-  const queryKey =  queryOptions?.queryKey ?? getGetProductBySlugQueryKey(slug);
-
-
-
-    const queryFn: QueryFunction<Awaited<ReturnType<typeof getProductBySlug>>> = ({ signal }) => getProductBySlug(slug, { signal, ...requestOptions });
-
-
-
-
-
-   return  { queryKey, queryFn, enabled: !!(slug), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getProductBySlug>>, TError, TData> & { queryKey: QueryKey }
-}
-
-export type GetProductBySlugQueryResult = NonNullable<Awaited<ReturnType<typeof getProductBySlug>>>
-export type GetProductBySlugQueryError = ErrorType<void>
-
-
-/**
- * @summary Get a public product by slug (no auth)
- */
-
-export function useGetProductBySlug<TData = Awaited<ReturnType<typeof getProductBySlug>>, TError = ErrorType<void>>(
- slug: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getProductBySlug>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
-
- ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
-
-  const queryOptions = getGetProductBySlugQueryOptions(slug,options)
-
-  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
-
-  return { ...query, queryKey: queryOptions.queryKey };
-}
-
-
-
-
-
-
 
 export const getListKeysUrl = (params?: ListKeysParams,) => {
   const normalizedParams = new URLSearchParams();

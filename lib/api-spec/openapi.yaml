@@ -117,6 +117,26 @@ paths:
               schema:
                 $ref: "#/components/schemas/Tenant"
 
+  /tenants/verify-resend:
+    post:
+      operationId: verifyResend
+      tags: [auth]
+      summary: Verify Resend API Key by sending a test email
+      responses:
+        "200":
+          description: Verified
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  message:
+                    type: string
+        "400":
+          description: Verification failed
+
   # Public Storefront
   /public/tenants/{slug}:
     get:
@@ -161,6 +181,64 @@ paths:
                   $ref: "#/components/schemas/PublicProduct"
         "404":
           description: Tenant not found
+
+  /public/tenants/{slug}/orders/lookup:
+    get:
+      operationId: lookupOrder
+      tags: [orders]
+      summary: Customer order lookup (public)
+      parameters:
+        - name: slug
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: email
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: reference
+          in: query
+          required: true
+          schema:
+            type: string
+            description: Order ID, Stripe Session ID, or eBay Order ID
+      responses:
+        "200":
+          description: Order details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrderLookupResult"
+        "404":
+          description: Order or Tenant not found
+
+  /public/tenants/{slug}/products/{productSlug}:
+    get:
+      operationId: getPublicProduct
+      tags: [products]
+      summary: Get a public product by slug for a specific tenant
+      parameters:
+        - name: slug
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: productSlug
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Product
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PublicProduct"
+        "404":
+          description: Not found
 
   # Products (admin)
   /products:
@@ -271,26 +349,6 @@ paths:
         "404":
           description: Not found
 
-  /products/{slug}/by-slug:
-    get:
-      operationId: getProductBySlug
-      tags: [products]
-      summary: Get a public product by slug (no auth)
-      parameters:
-        - name: slug
-          in: path
-          required: true
-          schema:
-            type: string
-      responses:
-        "200":
-          description: Product
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/PublicProduct"
-        "404":
-          description: Not found
 
   # License Keys
   /keys:
@@ -798,6 +856,31 @@ components:
       required: [token]
       properties:
         token:
+          type: string
+
+    OrderLookupResult:
+      type: object
+      required: [status, productName, quantity, createdAt]
+      properties:
+        status:
+          type: string
+          enum: [pending, paid, fulfilled, failed, refunded]
+        productName:
+          type: string
+        quantity:
+          type: integer
+        keys:
+          type: array
+          items:
+            type: string
+          nullable: true
+        activationInstructions:
+          type: string
+          nullable: true
+        fulfilledAt:
+          type: string
+          nullable: true
+        createdAt:
           type: string
 
     Product:

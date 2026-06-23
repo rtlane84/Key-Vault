@@ -90,13 +90,21 @@ router.get("/products/public", async (_req, res): Promise<void> => {
   res.json(result);
 });
 
-router.get("/products/:slug/by-slug", async (req, res): Promise<void> => {
-  const slug = Array.isArray(req.params.slug) ? req.params.slug[0] : req.params.slug;
+router.get("/public/tenants/:slug/products/:productSlug", async (req, res): Promise<void> => {
+  const { slug, productSlug } = req.params;
+  const tenants = await db.select().from(tenantsTable).where(eq(tenantsTable.slug, slug)).limit(1);
+
+  if (tenants.length === 0) {
+    res.status(404).json({ error: "Tenant not found" });
+    return;
+  }
+
+  const tenantId = tenants[0].id;
 
   const rows = await db
     .select()
     .from(productsTable)
-    .where(eq(productsTable.slug, slug))
+    .where(and(eq(productsTable.slug, productSlug), eq(productsTable.tenantId, tenantId)))
     .limit(1);
 
   if (rows.length === 0 || !rows[0].active) {

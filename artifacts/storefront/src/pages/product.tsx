@@ -55,15 +55,17 @@ export default function ProductPage() {
   });
 
   const { data: product, isLoading, error } = useQuery<PublicProduct>({
-    queryKey: ["product", productSlug],
+    queryKey: ["product", tenantSlug, productSlug],
     queryFn: async () => {
       try {
-        return await customFetch<PublicProduct>(`/products/${encodeURIComponent(productSlug)}/by-slug`);
+        if (!tenantSlug) throw new Error("No tenant slug");
+        return await customFetch<PublicProduct>(`/public/tenants/${tenantSlug}/products/${encodeURIComponent(productSlug)}`);
       } catch (err: any) {
         if (err.status === 404) throw new Error("not_found");
         throw err;
       }
     },
+    enabled: !!tenantSlug,
     retry: false,
   });
 

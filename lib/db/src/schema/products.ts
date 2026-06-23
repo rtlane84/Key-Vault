@@ -1,4 +1,4 @@
-import { pgTable, text, serial, timestamp, integer, boolean } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, timestamp, integer, boolean, uniqueIndex } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { tenantsTable } from "./tenants";
@@ -7,8 +7,8 @@ export const productsTable = pgTable("products", {
   id: serial("id").primaryKey(),
   tenantId: integer("tenant_id").notNull().references(() => tenantsTable.id),
   name: text("name").notNull(),
-  slug: text("slug").notNull().unique(),
-  sku: text("sku").notNull().unique(),
+  slug: text("slug").notNull(),
+  sku: text("sku").notNull(),
   description: text("description"),
   shortDescription: text("short_description"),
   price: integer("price").notNull().default(0), // in cents
@@ -23,7 +23,10 @@ export const productsTable = pgTable("products", {
   lowInventoryThreshold: integer("low_inventory_threshold").notNull().default(5),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
-});
+}, (table) => ({
+  tenantSlugIdx: uniqueIndex("tenant_slug_idx").on(table.tenantId, table.slug),
+  tenantSkuIdx: uniqueIndex("tenant_sku_idx").on(table.tenantId, table.sku),
+}));
 
 export const insertProductSchema = createInsertSchema(productsTable).omit({ id: true, createdAt: true, updatedAt: true });
 export type InsertProduct = z.infer<typeof insertProductSchema>;

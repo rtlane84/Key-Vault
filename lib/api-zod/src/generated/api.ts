@@ -84,6 +84,15 @@ export const UpdateMyTenantResponse = zod.object({
 
 
 /**
+ * @summary Verify Resend API Key by sending a test email
+ */
+export const VerifyResendResponse = zod.object({
+  "success": zod.boolean().optional(),
+  "message": zod.string().optional()
+})
+
+
+/**
  * @summary Get public tenant branding
  */
 export const GetPublicTenantParams = zod.object({
@@ -118,6 +127,51 @@ export const ListTenantProductsResponseItem = zod.object({
   "availableKeyCount": zod.number()
 })
 export const ListTenantProductsResponse = zod.array(ListTenantProductsResponseItem)
+
+
+/**
+ * @summary Customer order lookup (public)
+ */
+export const LookupOrderParams = zod.object({
+  "slug": zod.coerce.string()
+})
+
+export const LookupOrderQueryParams = zod.object({
+  "email": zod.coerce.string(),
+  "reference": zod.coerce.string()
+})
+
+export const LookupOrderResponse = zod.object({
+  "status": zod.enum(['pending', 'paid', 'fulfilled', 'failed', 'refunded']),
+  "productName": zod.string(),
+  "quantity": zod.number(),
+  "keys": zod.array(zod.string()).nullish(),
+  "activationInstructions": zod.string().nullish(),
+  "fulfilledAt": zod.string().nullish(),
+  "createdAt": zod.string()
+})
+
+
+/**
+ * @summary Get a public product by slug for a specific tenant
+ */
+export const GetPublicProductParams = zod.object({
+  "slug": zod.coerce.string(),
+  "productSlug": zod.coerce.string()
+})
+
+export const GetPublicProductResponse = zod.object({
+  "id": zod.number(),
+  "name": zod.string(),
+  "slug": zod.string(),
+  "description": zod.string().nullish(),
+  "shortDescription": zod.string().nullish(),
+  "price": zod.number(),
+  "imageUrl": zod.string().nullish(),
+  "category": zod.string().nullish(),
+  "stripePriceId": zod.string().nullish(),
+  "availableKeyCount": zod.number()
+})
 
 
 /**
@@ -283,27 +337,6 @@ export const UpdateProductResponse = zod.object({
  */
 export const DeleteProductParams = zod.object({
   "id": zod.coerce.number()
-})
-
-
-/**
- * @summary Get a public product by slug (no auth)
- */
-export const GetProductBySlugParams = zod.object({
-  "slug": zod.coerce.string()
-})
-
-export const GetProductBySlugResponse = zod.object({
-  "id": zod.number(),
-  "name": zod.string(),
-  "slug": zod.string(),
-  "description": zod.string().nullish(),
-  "shortDescription": zod.string().nullish(),
-  "price": zod.number(),
-  "imageUrl": zod.string().nullish(),
-  "category": zod.string().nullish(),
-  "stripePriceId": zod.string().nullish(),
-  "availableKeyCount": zod.number()
 })
 
 

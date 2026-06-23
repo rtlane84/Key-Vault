@@ -18,6 +18,27 @@ export interface LoginResult {
   token: string;
 }
 
+export type OrderLookupResultStatus = typeof OrderLookupResultStatus[keyof typeof OrderLookupResultStatus];
+
+
+export const OrderLookupResultStatus = {
+  pending: 'pending',
+  paid: 'paid',
+  fulfilled: 'fulfilled',
+  failed: 'failed',
+  refunded: 'refunded',
+} as const;
+
+export interface OrderLookupResult {
+  status: OrderLookupResultStatus;
+  productName: string;
+  quantity: number;
+  keys?: string[] | null;
+  activationInstructions?: string | null;
+  fulfilledAt?: string | null;
+  createdAt: string;
+}
+
 export interface Product {
   id: number;
   name: string;
@@ -441,6 +462,19 @@ export interface ActivityItem {
   ebayOrderId?: string | null;
   createdAt: string;
 }
+
+export type VerifyResend200 = {
+  success?: boolean;
+  message?: string;
+};
+
+export type LookupOrderParams = {
+email: string;
+/**
+ * Order ID, Stripe Session ID, or eBay Order ID
+ */
+reference: string;
+};
 
 export type ListKeysParams = {
 productId?: number;

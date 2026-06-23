@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Link } from "wouter";
+import { Link, useParams } from "wouter";
 import { Search, Package, Zap, ArrowLeft, Key, Calendar, CheckCircle2, AlertCircle, Loader2 } from "lucide-react";
 import { setBaseUrl, customFetch } from "@workspace/api-client-react";
 import { Button } from "@/components/ui/button";
@@ -22,18 +22,40 @@ interface OrderLookupResult {
   createdAt: string;
 }
 
+interface PublicTenant {
+  id: number;
+  name: string;
+  slug: string;
+  supportEmail: string | null;
+}
+
 export default function LookupPage() {
+  const { tenantSlug } = useParams<{ tenantSlug?: string }>();
   const [email, setEmail] = useState("");
   const [reference, setReference] = useState("");
   const [searchParams, setSearchParams] = useState<{ email: string; reference: string } | null>(null);
 
-  const { data: order, isLoading, error } = useQuery<OrderLookupResult>({
-    queryKey: ["order-lookup", searchParams?.email, searchParams?.reference],
+  const { data: tenant } = useQuery<PublicTenant | null>({
+    queryKey: ["/public/tenants", tenantSlug],
     queryFn: async () => {
-      if (!searchParams) throw new Error("No search params");
-      return customFetch<OrderLookupResult>(`/orders/lookup?email=${encodeURIComponent(searchParams.email)}&reference=${encodeURIComponent(searchParams.reference)}`);
+      if (!tenantSlug) return null;
+      try {
+        return await customFetch<PublicTenant>(`/public/tenants/${tenantSlug}`);
+      } catch (err) {
+        console.error("Tenant not found", err);
+        return null;
+      }
     },
-    enabled: !!searchParams,
+    enabled: !!tenantSlug,
+  });
+
+  const { data: order, isLoading, error } = useQuery<OrderLookupResult>({
+    queryKey: ["order-lookup", tenantSlug, searchParams?.email, searchParams?.reference],
+    queryFn: async () => {
+      if (!searchParams || !tenantSlug) throw new Error("Missing parameters");
+      return customFetch<OrderLookupResult>(`/public/tenants/${tenantSlug}/orders/lookup?email=${encodeURIComponent(searchParams.email)}&reference=${encodeURIComponent(searchParams.reference)}`);
+    },
+    enabled: !!searchParams && !!tenantSlug,
     retry: false,
   });
 
@@ -66,13 +88,13 @@ export default function LookupPage() {
     <div className="min-h-screen bg-background">
       <header className="border-b border-border/60 bg-background/95 backdrop-blur-sm sticky top-0 z-40">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
-          <Link href="/">
+          <Link href={tenantSlug ? `/s/${tenantSlug}` : "/"}>
             <div className="flex items-center gap-2.5 cursor-pointer">
               <Zap className="w-4 h-4 text-primary" />
-              <span className="font-bold text-foreground">KeyVault</span>
+              <span className="font-bold text-foreground">{tenant?.name || "KeyVault"}</span>
             </div>
           </Link>
-          <Link href="/">
+          <Link href={tenantSlug ? `/s/${tenantSlug}` : "/"}>
             <Button variant="ghost" size="sm" className="text-muted-foreground gap-2">
               <ArrowLeft className="w-4 h-4" />
               Store

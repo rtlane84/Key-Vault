@@ -1,10 +1,10 @@
 import { useState, useEffect } from "react";
-import { useGetMyTenant, useUpdateMyTenant, useStripeConnect } from "@workspace/api-client-react";
+import { useGetMyTenant, useUpdateMyTenant, useStripeConnect, useVerifyResend } from "@workspace/api-client-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Loader2, Save, CheckCircle2, AlertCircle, ExternalLink } from "lucide-react";
+import { Loader2, Save, CheckCircle2, AlertCircle, ExternalLink, MailCheck } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 export default function SettingsPage() {
@@ -12,6 +12,7 @@ export default function SettingsPage() {
   const { data: tenant, isLoading } = useGetMyTenant();
   const updateTenant = useUpdateMyTenant();
   const stripeConnect = useStripeConnect();
+  const verifyResend = useVerifyResend();
 
   const [name, setName] = useState("");
   const [supportEmail, setSupportEmail] = useState("");
@@ -62,6 +63,22 @@ export default function SettingsPage() {
         variant: "destructive",
         title: "Error",
         description: err.message || "Failed to start Stripe connection.",
+      });
+    }
+  }
+
+  async function handleVerifyResend() {
+    try {
+      const result = await verifyResend.mutateAsync();
+      toast({
+        title: "Verification successful",
+        description: (result as any).message || "Test email sent.",
+      });
+    } catch (err: any) {
+      toast({
+        variant: "destructive",
+        title: "Verification failed",
+        description: err.message || "Failed to verify Resend connection.",
       });
     }
   }
@@ -141,8 +158,26 @@ export default function SettingsPage() {
 
         <Card>
           <CardHeader>
-            <CardTitle>Email Delivery (Resend)</CardTitle>
-            <CardDescription>Configure how your license keys are delivered via email.</CardDescription>
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle>Email Delivery (Resend)</CardTitle>
+                <CardDescription>Configure how your license keys are delivered via email.</CardDescription>
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={handleVerifyResend}
+                disabled={verifyResend.isPending || !tenant?.resendApiKey || !tenant?.fromEmail}
+              >
+                {verifyResend.isPending ? (
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                ) : (
+                  <MailCheck className="w-4 h-4 mr-2" />
+                )}
+                Verify Connection
+              </Button>
+            </div>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="grid gap-2">

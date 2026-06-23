@@ -50,6 +50,7 @@ router.post("/stripe/checkout", async (req, res): Promise<void> => {
     .limit(1);
 
   if (availableKeys.length === 0) {
+    logger.warn({ productId, tenantId: product.tenantId }, "Checkout failed: Product is out of stock");
     res.status(400).json({ error: "Product is out of stock" });
     return;
   }
