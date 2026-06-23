@@ -2,6 +2,7 @@ import { eq, and } from "drizzle-orm";
 import { db, productsTable, licenseKeysTable, ordersTable, syncLogsTable } from "@workspace/db";
 import { sendLicenseEmail } from "./email";
 import { logger } from "./logger";
+import { markOrderAsFulfilledOnEbay } from "./ebay-sync";
 
 export interface FulfillmentInput {
   orderId: number;
@@ -108,6 +109,19 @@ export async function fulfillOrder(input: FulfillmentInput): Promise<Fulfillment
       productId,
       keyId: key.id,
     });
+
+    // If this is an eBay order, mark it as fulfilled on eBay
+    const orderRows = await db.select({ 
+      source: ordersTable.source, 
+      ebayOrderId: ordersTable.ebayOrderId 
+    })
+    .from(ordersTable)
+    .where(eq(ordersTable.id, orderId))
+    .limit(1);
+
+    if (orderRows[0]?.source === "ebay" && orderRows[0].ebayOrderId) {
+      await markOrderAsFulfilledOnEbay(orderRows[0].ebayOrderId, orderId);
+    }
   } else {
     logger.warn({ orderId, error: emailResult.error }, "Key assigned but email failed");
     await logEvent({

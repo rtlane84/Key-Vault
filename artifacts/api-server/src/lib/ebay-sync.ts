@@ -522,6 +522,71 @@ export async function syncEbayListings(accessToken: string): Promise<{ imported:
   return { imported, updated, total: items.length };
 }
 
+/**
+ * Mark an order as fulfilled (shipped) on eBay.
+ * For digital goods, we omit tracking info.
+ */
+export async function markOrderAsFulfilledOnEbay(ebayOrderId: string, orderId: number): Promise<boolean> {
+  try {
+    const accessToken = await refreshEbayToken();
+    
+    logger.info({ ebayOrderId, orderId }, "Marking eBay order as fulfilled...");
+
+    const response = await fetch(
+      `https://api.ebay.com/sell/fulfillment/v1/order/${ebayOrderId}/shipping_fulfillment`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          lineItems: [], // Empty array means fulfill all line items in the order
+          // For digital delivery, we don't provide trackingNumber or shippingCarrierCode
+        }),
+      }
+    );
+
+    if (response.ok || response.status === 409) {
+      // 409 Conflict usually means it's already fulfilled
+      const statusMessage = response.status === 409 
+        ? "eBay order already marked as fulfilled (409)" 
+        : "eBay order successfully marked as fulfilled";
+      
+      logger.info({ ebayOrderId, status: response.status }, statusMessage);
+      await logEvent({
+        event: "ebay_marked_fulfilled",
+        level: "info",
+        message: statusMessage,
+        ebayOrderId,
+        orderId,
+      });
+      return true;
+    } else {
+      const errorText = await response.text();
+      logger.error({ ebayOrderId, status: response.status, error: errorText }, "Failed to mark eBay order fulfilled");
+      await logEvent({
+        event: "ebay_fulfillment_failed",
+        level: "error",
+        message: `Failed to mark eBay fulfilled: ${response.status} ${errorText}`,
+        ebayOrderId,
+        orderId,
+      });
+      return false;
+    }
+  } catch (err) {
+    logger.error({ err, ebayOrderId }, "Error calling eBay Fulfillment API");
+    await logEvent({
+      event: "ebay_fulfillment_failed",
+      level: "error",
+      message: `Error marking eBay fulfilled: ${err instanceof Error ? err.message : String(err)}`,
+      ebayOrderId,
+      orderId,
+    });
+    return false;
+  }
+}
+
 export async function fulfillOrderById(orderId: number): Promise<{ success: boolean; error?: string }> {
   const orders = await db.select().from(ordersTable).where(eq(ordersTable.id, orderId)).limit(1);
   if (orders.length === 0) {
@@ -573,6 +638,11 @@ export async function fulfillOrderById(orderId: number): Promise<{ success: bool
     productId: product.id,
     keyId: key.id,
   });
+
+  // If it's an eBay order, mark it as fulfilled on eBay
+  if (order.source === "ebay" && order.ebayOrderId) {
+    await markOrderAsFulfilledOnEbay(order.ebayOrderId, orderId);
+  }
 
   return { success: true };
 }
