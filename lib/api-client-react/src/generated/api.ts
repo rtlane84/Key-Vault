@@ -32,6 +32,7 @@ import type {
   EbayPollSettings,
   EbayPollSettingsInput,
   EbayStatus,
+  EbaySyncHistory,
   HealthStatus,
   KeyImport,
   KeyImportResult,
@@ -2245,6 +2246,83 @@ export const useStripeWebhook = <TError = ErrorType<unknown>,
       return useMutation(getStripeWebhookMutationOptions(options));
     }
 
+export const getGetEbaySyncHistoryUrl = () => {
+
+
+
+
+  return `/api/ebay/history`
+}
+
+/**
+ * @summary Get eBay sync history for the current tenant
+ */
+export const getEbaySyncHistory = async ( options?: RequestInit): Promise<EbaySyncHistory[]> => {
+
+  return customFetch<EbaySyncHistory[]>(getGetEbaySyncHistoryUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetEbaySyncHistoryQueryKey = () => {
+    return [
+    `/api/ebay/history`
+    ] as const;
+    }
+
+
+export const getGetEbaySyncHistoryQueryOptions = <TData = Awaited<ReturnType<typeof getEbaySyncHistory>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getEbaySyncHistory>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetEbaySyncHistoryQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getEbaySyncHistory>>> = ({ signal }) => getEbaySyncHistory({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getEbaySyncHistory>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetEbaySyncHistoryQueryResult = NonNullable<Awaited<ReturnType<typeof getEbaySyncHistory>>>
+export type GetEbaySyncHistoryQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Get eBay sync history for the current tenant
+ */
+
+export function useGetEbaySyncHistory<TData = Awaited<ReturnType<typeof getEbaySyncHistory>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getEbaySyncHistory>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetEbaySyncHistoryQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
 export const getGetEbayStatusUrl = () => {
 
 
@@ -2338,7 +2416,7 @@ export const getEbayConnectUrl = async ( options?: RequestInit): Promise<EbayCon
   return customFetch<EbayConnectUrl>(getGetEbayConnectUrlUrl(),
   {
     ...options,
-    method: 'GET'
+    method: 'POST'
 
 
   }
@@ -2347,57 +2425,50 @@ export const getEbayConnectUrl = async ( options?: RequestInit): Promise<EbayCon
 
 
 
+export const getGetEbayConnectUrlMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof getEbayConnectUrl>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof getEbayConnectUrl>>, TError,void, TContext> => {
 
-export const getGetEbayConnectUrlQueryKey = () => {
-    return [
-    `/api/ebay/connect`
-    ] as const;
-    }
-
-
-export const getGetEbayConnectUrlQueryOptions = <TData = Awaited<ReturnType<typeof getEbayConnectUrl>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getEbayConnectUrl>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
-) => {
-
-const {query: queryOptions, request: requestOptions} = options ?? {};
-
-  const queryKey =  queryOptions?.queryKey ?? getGetEbayConnectUrlQueryKey();
-
-
-
-    const queryFn: QueryFunction<Awaited<ReturnType<typeof getEbayConnectUrl>>> = ({ signal }) => getEbayConnectUrl({ signal, ...requestOptions });
+const mutationKey = ['getEbayConnectUrl'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
 
 
 
 
-
-   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getEbayConnectUrl>>, TError, TData> & { queryKey: QueryKey }
-}
-
-export type GetEbayConnectUrlQueryResult = NonNullable<Awaited<ReturnType<typeof getEbayConnectUrl>>>
-export type GetEbayConnectUrlQueryError = ErrorType<unknown>
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof getEbayConnectUrl>>, void> = () => {
 
 
-/**
+          return  getEbayConnectUrl(requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type GetEbayConnectUrlMutationResult = NonNullable<Awaited<ReturnType<typeof getEbayConnectUrl>>>
+
+    export type GetEbayConnectUrlMutationError = ErrorType<unknown>
+
+    /**
  * @summary Get eBay OAuth authorization URL
  */
-
-export function useGetEbayConnectUrl<TData = Awaited<ReturnType<typeof getEbayConnectUrl>>, TError = ErrorType<unknown>>(
-  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getEbayConnectUrl>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
-
- ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
-
-  const queryOptions = getGetEbayConnectUrlQueryOptions(options)
-
-  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
-
-  return { ...query, queryKey: queryOptions.queryKey };
-}
-
-
-
-
-
-
+export const useGetEbayConnectUrl = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof getEbayConnectUrl>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof getEbayConnectUrl>>,
+        TError,
+        void,
+        TContext
+      > => {
+      return useMutation(getGetEbayConnectUrlMutationOptions(options));
+    }
 
 export const getDisconnectEbayUrl = () => {
 

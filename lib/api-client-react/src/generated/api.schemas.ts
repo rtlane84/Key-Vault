@@ -284,6 +284,20 @@ export interface EbayPollSettings {
   pollIntervalMinutes: number;
 }
 
+export interface EbaySyncHistory {
+  id: number;
+  type: string;
+  status: string;
+  ordersFound?: number;
+  ordersProcessed?: number;
+  keysAssigned?: number;
+  listingsSynced?: number;
+  failedCount?: number;
+  /** @nullable */
+  errors?: string | null;
+  createdAt: string;
+}
+
 export type EbayPollSettingsInputPollIntervalMinutes = typeof EbayPollSettingsInputPollIntervalMinutes[keyof typeof EbayPollSettingsInputPollIntervalMinutes];
 
 

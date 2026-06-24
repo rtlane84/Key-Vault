@@ -14,13 +14,17 @@ import {
   useListSyncLogs,
   useGetEbayPollSettings,
   useUpdateEbayPollSettings,
+  useGetEbaySyncHistory,
   getGetEbayStatusQueryKey,
   getListSyncLogsQueryKey,
   getGetEbayPollSettingsQueryKey,
+  getGetEbaySyncHistoryQueryKey,
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
 const levelColor: Record<string, string> = {
   info: "text-primary",
@@ -37,8 +41,9 @@ export default function EbayPage() {
   const { toast } = useToast();
 
   const { data: status, isLoading: statusLoading } = useGetEbayStatus();
-  const { data: connectData } = useGetEbayConnectUrl();
   const { data: logs, isLoading: logsLoading } = useListSyncLogs({ limit: 30 });
+  const { data: history, isLoading: historyLoading } = useGetEbaySyncHistory();
+  const connect = useGetEbayConnectUrl();
 
   const disconnect = useDisconnectEbay();
   const syncEbay = useTriggerEbaySync();
@@ -54,11 +59,24 @@ export default function EbayPage() {
   const { data: pollSettings } = useGetEbayPollSettings();
   const updatePollSettings = useUpdateEbayPollSettings();
 
-  const handleConnect = () => {
-    if (connectData?.url && connectData.url !== "#mock-mode-no-ebay-credentials") {
-      window.location.href = connectData.url;
-    } else {
-      toast({ title: "Mock mode — no eBay credentials configured", description: "Set EBAY_CLIENT_ID and EBAY_CLIENT_SECRET to enable real OAuth", variant: "destructive" });
+  const handleConnect = async () => {
+    try {
+      const result = await connect.mutateAsync();
+      if (result.url && result.url !== "#mock-mode-no-ebay-credentials") {
+        window.location.href = result.url;
+      } else if (result.url === "#mock-mode-no-ebay-credentials") {
+        toast({ 
+          title: "Mock mode — no eBay credentials configured", 
+          description: "Set EBAY_CLIENT_ID and EBAY_CLIENT_SECRET to enable real OAuth", 
+          variant: "destructive" 
+        });
+      }
+    } catch (err: any) {
+      toast({ 
+        title: "Failed to initiate eBay connection", 
+        description: err.message || "An authentication error occurred. Please try again.", 
+        variant: "destructive" 
+      });
     }
   };
 
@@ -79,6 +97,7 @@ export default function EbayPage() {
       toast({ title: `Sync complete — ${result.keysAssigned} keys assigned` });
       queryClient.invalidateQueries({ queryKey: getGetEbayStatusQueryKey() });
       queryClient.invalidateQueries({ queryKey: getListSyncLogsQueryKey() });
+      queryClient.invalidateQueries({ queryKey: getGetEbaySyncHistoryQueryKey() });
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Sync failed";
       toast({ title: msg, variant: "destructive" });
@@ -91,6 +110,7 @@ export default function EbayPage() {
       toast({ title: `Mock sync complete — ${result.keysAssigned} keys assigned, ${result.skipped} skipped` });
       queryClient.invalidateQueries({ queryKey: getGetEbayStatusQueryKey() });
       queryClient.invalidateQueries({ queryKey: getListSyncLogsQueryKey() });
+      queryClient.invalidateQueries({ queryKey: getGetEbaySyncHistoryQueryKey() });
     } catch {
       toast({ title: "Mock sync failed", variant: "destructive" });
     }
@@ -244,37 +264,90 @@ export default function EbayPage() {
         </Card>
       </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Sync Log</CardTitle>
-        </CardHeader>
-        <CardContent className="p-0">
-          {logsLoading ? (
-            <div className="p-6 text-muted-foreground text-sm">Loading...</div>
-          ) : !logs || logs.length === 0 ? (
-            <div className="p-6 text-center text-muted-foreground text-sm">No sync activity yet.</div>
-          ) : (
-            <div className="divide-y divide-border">
-              {logs.map((log) => (
-                <div key={log.id} className="px-4 py-3 flex items-start gap-3">
-                  <span className={`text-xs font-mono font-semibold uppercase w-10 flex-shrink-0 mt-0.5 ${levelColor[log.level ?? "info"] ?? "text-muted-foreground"}`}>
-                    {log.level}
-                  </span>
-                  <div className="flex-1 min-w-0">
-                    <span className="text-sm">{log.message}</span>
-                    {log.ebayOrderId && (
-                      <span className="ml-2 text-xs text-muted-foreground font-mono">({log.ebayOrderId})</span>
-                    )}
-                  </div>
-                  <span className="text-xs text-muted-foreground flex-shrink-0">
-                    {format(new Date(log.createdAt), "MMM d, HH:mm:ss")}
-                  </span>
+      <Tabs defaultValue="logs">
+        <TabsList className="grid w-full grid-cols-2 max-w-[400px]">
+          <TabsTrigger value="logs">Activity Logs</TabsTrigger>
+          <TabsTrigger value="history">Sync History</TabsTrigger>
+        </TabsList>
+        <TabsContent value="logs">
+          <Card>
+            <CardHeader>
+              <CardTitle>Sync Log</CardTitle>
+            </CardHeader>
+            <CardContent className="p-0">
+              {logsLoading ? (
+                <div className="p-6 text-muted-foreground text-sm">Loading...</div>
+              ) : !logs || logs.length === 0 ? (
+                <div className="p-6 text-center text-muted-foreground text-sm">No sync activity yet.</div>
+              ) : (
+                <div className="divide-y divide-border">
+                  {logs.map((log) => (
+                    <div key={log.id} className="px-4 py-3 flex items-start gap-3">
+                      <span className={`text-xs font-mono font-semibold uppercase w-10 flex-shrink-0 mt-0.5 ${levelColor[log.level ?? "info"] ?? "text-muted-foreground"}`}>
+                        {log.level}
+                      </span>
+                      <div className="flex-1 min-w-0">
+                        <span className="text-sm">{log.message}</span>
+                        {log.ebayOrderId && (
+                          <span className="ml-2 text-xs text-muted-foreground font-mono">({log.ebayOrderId})</span>
+                        )}
+                      </div>
+                      <span className="text-xs text-muted-foreground flex-shrink-0">
+                        {format(new Date(log.createdAt), "MMM d, HH:mm:ss")}
+                      </span>
+                    </div>
+                  ))}
                 </div>
-              ))}
-            </div>
-          )}
-        </CardContent>
-      </Card>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+        <TabsContent value="history">
+          <Card>
+            <CardHeader>
+              <CardTitle>Sync History</CardTitle>
+            </CardHeader>
+            <CardContent className="p-0">
+              {historyLoading ? (
+                <div className="p-6 text-muted-foreground text-sm">Loading...</div>
+              ) : !history || history.length === 0 ? (
+                <div className="p-6 text-center text-muted-foreground text-sm">No historical records.</div>
+              ) : (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Date</TableHead>
+                      <TableHead>Type</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead className="text-right">Orders</TableHead>
+                      <TableHead className="text-right">Keys</TableHead>
+                      <TableHead className="text-right">Failed</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {history.map((h) => (
+                      <TableRow key={h.id}>
+                        <TableCell className="text-xs font-mono">
+                          {format(new Date(h.createdAt), "yyyy-MM-dd HH:mm")}
+                        </TableCell>
+                        <TableCell className="capitalize">{h.type}</TableCell>
+                        <TableCell>
+                          <Badge variant={h.status === "success" ? "default" : h.status === "partial" ? "outline" : "destructive"}>
+                            {h.status}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-right">{h.ordersProcessed} / {h.ordersFound}</TableCell>
+                        <TableCell className="text-right">{h.keysAssigned}</TableCell>
+                        <TableCell className="text-right text-destructive font-bold">{h.failedCount || 0}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }

@@ -543,6 +543,24 @@ export const StripeCallbackQueryParams = zod.object({
 
 
 /**
+ * @summary Get eBay sync history for the current tenant
+ */
+export const GetEbaySyncHistoryResponseItem = zod.object({
+  "id": zod.number(),
+  "type": zod.string(),
+  "status": zod.string(),
+  "ordersFound": zod.number().optional(),
+  "ordersProcessed": zod.number().optional(),
+  "keysAssigned": zod.number().optional(),
+  "listingsSynced": zod.number().optional(),
+  "failedCount": zod.number().optional(),
+  "errors": zod.string().nullish(),
+  "createdAt": zod.string()
+})
+export const GetEbaySyncHistoryResponse = zod.array(GetEbaySyncHistoryResponseItem)
+
+
+/**
  * @summary Get eBay connection status
  */
 export const GetEbayStatusResponse = zod.object({

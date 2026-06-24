@@ -610,6 +610,21 @@ paths:
         "200":
           description: Acknowledged
 
+  /ebay/history:
+    get:
+      operationId: getEbaySyncHistory
+      tags: [ebay]
+      summary: Get eBay sync history for the current tenant
+      responses:
+        "200":
+          description: Sync history
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/EbaySyncHistory"
+
   # eBay integration
   /ebay/status:
     get:
@@ -625,7 +640,7 @@ paths:
                 $ref: "#/components/schemas/EbayStatus"
 
   /ebay/connect:
-    get:
+    post:
       operationId: getEbayConnectUrl
       tags: [ebay]
       summary: Get eBay OAuth authorization URL
@@ -1206,6 +1221,31 @@ components:
       properties:
         pollIntervalMinutes:
           type: integer
+
+    EbaySyncHistory:
+      type: object
+      required: [id, type, status, createdAt]
+      properties:
+        id:
+          type: integer
+        type:
+          type: string
+        status:
+          type: string
+        ordersFound:
+          type: integer
+        ordersProcessed:
+          type: integer
+        keysAssigned:
+          type: integer
+        listingsSynced:
+          type: integer
+        failedCount:
+          type: integer
+        errors:
+          type: ["string", "null"]
+        createdAt:
+          type: string
 
     EbayPollSettingsInput:
       type: object

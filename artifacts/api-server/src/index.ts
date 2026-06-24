@@ -1,3 +1,8 @@
+import dotenv from "dotenv";
+import path from "path";
+// Load .env from root
+dotenv.config({ path: path.join(process.cwd(), "../../.env") });
+
 import app from "./app";
 import { logger } from "./lib/logger";
 import { startScheduler } from "./lib/scheduler";

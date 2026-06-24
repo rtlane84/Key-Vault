@@ -1,11 +1,10 @@
 import { db, productsTable, licenseKeysTable, ordersTable, syncLogsTable, ebaySettingsTable, ebayListingsTable, ebaySyncHistoryTable } from "@workspace/db";
-import { eq, and, isNull } from "drizzle-orm";
+import { eq, and, isNotNull } from "drizzle-orm";
 import { logger } from "./logger";
 import { fulfillOrder } from "./fulfillment";
+import { getEbayConfig } from "./ebay-config";
 
-const EBAY_CLIENT_ID = process.env.EBAY_CLIENT_ID ?? "";
-const EBAY_CLIENT_SECRET = process.env.EBAY_CLIENT_SECRET ?? "";
-const EBAY_REDIRECT_URI = process.env.EBAY_REDIRECT_URI ?? "";
+const ebayConfig = getEbayConfig();
 
 export async function refreshEbayToken(tenantId: number): Promise<string> {
   const settings = await db.select().from(ebaySettingsTable).where(eq(ebaySettingsTable.tenantId, tenantId)).limit(1);
@@ -20,14 +19,14 @@ export async function refreshEbayToken(tenantId: number): Promise<string> {
     return s.accessToken;
   }
 
-  if (!EBAY_CLIENT_ID || !EBAY_CLIENT_SECRET) {
+  if (ebayConfig.isMockMode) {
     throw new Error("eBay credentials not configured (EBAY_CLIENT_ID/EBAY_CLIENT_SECRET)");
   }
 
-  logger.info({ tenantId }, "Refreshing eBay access token...");
-  const credentials = Buffer.from(`${EBAY_CLIENT_ID}:${EBAY_CLIENT_SECRET}`).toString("base64");
+  logger.info({ tenantId, env: ebayConfig.env }, "Refreshing eBay access token...");
+  const credentials = Buffer.from(`${ebayConfig.clientId}:${ebayConfig.clientSecret}`).toString("base64");
   
-  const response = await fetch("https://api.ebay.com/identity/v1/oauth2/token", {
+  const response = await fetch(`${ebayConfig.apiBase}/identity/v1/oauth2/token`, {
     method: "POST",
     headers: {
       Authorization: `Basic ${credentials}`,
@@ -74,6 +73,7 @@ export interface SyncResult {
   ordersFound: number;
   ordersProcessed: number;
   keysAssigned: number;
+  listingsSynced: number;
   failed: number;
   skipped: number;
   errors: string[];
@@ -287,6 +287,7 @@ export async function runMockSync(tenantId: number): Promise<SyncResult> {
     ordersFound: MOCK_EBAY_ORDERS.length,
     ordersProcessed: 0,
     keysAssigned: 0,
+    listingsSynced: 0,
     failed: 0,
     skipped: 0,
     errors: [],
@@ -344,6 +345,7 @@ export async function runRealEbaySync(tenantId: number): Promise<SyncResult> {
     ordersFound: 0,
     ordersProcessed: 0,
     keysAssigned: 0,
+    listingsSynced: 0,
     failed: 0,
     skipped: 0,
     errors: [],
@@ -426,7 +428,14 @@ export async function runRealEbaySync(tenantId: number): Promise<SyncResult> {
 
   // 2. Sync Listings (Inventory API)
   try {
-    await syncEbayListings(accessToken, tenantId);
+    const listingsResult = await syncEbayListings(accessToken, tenantId);
+    result.listingsSynced = listingsResult.total;
+    
+    // 2.1 Push inventory levels to eBay
+    await pushInventoryToEbay(tenantId).catch(err => {
+      logger.error({ err, tenantId }, "Inventory push failed during sync");
+      result.errors.push("Inventory push failed");
+    });
   } catch (err) {
     logger.error({ err }, "eBay Listing sync failed");
     result.errors.push("Listing sync failed");
@@ -456,6 +465,7 @@ export async function runRealEbaySync(tenantId: number): Promise<SyncResult> {
     ordersFound: result.ordersFound,
     ordersProcessed: result.ordersProcessed,
     keysAssigned: result.keysAssigned,
+    listingsSynced: result.listingsSynced,
     failedCount: result.failed,
     errors: result.errors.length > 0 ? JSON.stringify(result.errors) : null,
   });
@@ -549,6 +559,78 @@ export async function syncEbayListings(accessToken: string, tenantId: number): P
 }
 
 /**
+ * Pushes local license key stock levels to eBay listings.
+ */
+export async function pushInventoryToEbay(tenantId: number): Promise<{ updated: number; failed: number }> {
+  let updated = 0;
+  let failed = 0;
+
+  try {
+    const accessToken = await refreshEbayToken(tenantId);
+    
+    // 1. Get all mapped eBay listings for this tenant
+    const listings = await db.select().from(ebayListingsTable)
+      .where(
+        and(
+          eq(ebayListingsTable.tenantId, tenantId),
+          isNotNull(ebayListingsTable.productId)
+        )
+      );
+
+    for (const listing of listings) {
+      if (!listing.productId || !listing.sku) continue;
+
+      // 2. Count available keys for the product
+      const availableKeys = await db.select().from(licenseKeysTable)
+        .where(
+          and(
+            eq(licenseKeysTable.productId, listing.productId),
+            eq(licenseKeysTable.status, "available"),
+            eq(licenseKeysTable.tenantId, tenantId)
+          )
+        );
+      
+      const count = availableKeys.length;
+
+      // 3. Update eBay inventory item
+      // We use the Inventory API bulkUpdateInventoryItem or updateInventoryItem
+      const response = await fetch(`${ebayConfig.apiBase}/sell/inventory/v1/inventory_item/${encodeURIComponent(listing.sku)}`, {
+        method: "PUT",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/json",
+          "Content-Language": "en-US",
+        },
+        body: JSON.stringify({
+          availability: {
+            shipToLocationAvailability: {
+              quantity: count,
+            },
+          },
+        }),
+      });
+
+      if (response.ok) {
+        // 4. Update local listing cache
+        await db.update(ebayListingsTable)
+          .set({ quantity: count, lastSyncAt: new Date() })
+          .where(eq(ebayListingsTable.id, listing.id));
+        updated++;
+      } else {
+        const text = await response.text();
+        logger.error({ sku: listing.sku, status: response.status, error: text }, "Failed to push inventory to eBay");
+        failed++;
+      }
+    }
+  } catch (err) {
+    logger.error({ err, tenantId }, "Error pushing inventory to eBay");
+    throw err;
+  }
+
+  return { updated, failed };
+}
+
+/**
  * Mark an order as fulfilled (shipped) on eBay.
  * For digital goods, we omit tracking info.
  */
@@ -559,7 +641,7 @@ export async function markOrderAsFulfilledOnEbay(ebayOrderId: string, orderId: n
     logger.info({ ebayOrderId, orderId }, "Marking eBay order as fulfilled...");
 
     const response = await fetch(
-      `https://api.ebay.com/sell/fulfillment/v1/order/${ebayOrderId}/shipping_fulfillment`,
+      `${ebayConfig.apiBase}/sell/fulfillment/v1/order/${ebayOrderId}/shipping_fulfillment`,
       {
         method: "POST",
         headers: {

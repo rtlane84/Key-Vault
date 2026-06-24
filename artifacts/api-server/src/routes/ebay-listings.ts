@@ -8,8 +8,10 @@ import {
   MapEbayListingBody,
 } from "@workspace/api-zod";
 import { logger } from "../lib/logger";
+import { getEbayConfig } from "../lib/ebay-config";
 
 const router: IRouter = Router();
+const ebayConfig = getEbayConfig();
 
 async function formatListing(l: typeof ebayListingsTable.$inferSelect) {
   let productName: string | null = null;
@@ -37,7 +39,7 @@ async function formatListing(l: typeof ebayListingsTable.$inferSelect) {
   };
 }
 
-router.get("/ebay/listings", async (req, res): Promise<void> => {
+router.get("/", async (req, res): Promise<void> => {
   const tenantId = (req as any).tenantId;
   const params = ListEbayListingsQueryParams.safeParse(req.query);
   if (!params.success) {
@@ -59,11 +61,10 @@ router.get("/ebay/listings", async (req, res): Promise<void> => {
 });
 
 // Sync listings from eBay or create mock listings
-router.post("/ebay/listings/sync", async (req, res): Promise<void> => {
+router.post("/sync", async (req, res): Promise<void> => {
   const tenantId = (req as any).tenantId;
-  const ebayClientId = process.env.EBAY_CLIENT_ID;
 
-  if (!ebayClientId) {
+  if (ebayConfig.isMockMode) {
     // Mock mode: create some demo listings
     const mockListings = [
       { listingId: "MOCK-LIST-001", title: "Windows 11 Pro License Key", sku: "WIN-PRO-2024", price: 2999, quantity: 50 },
@@ -143,7 +144,7 @@ router.post("/ebay/listings/sync", async (req, res): Promise<void> => {
   }
 });
 
-router.patch("/ebay/listings/:id/map", async (req, res): Promise<void> => {
+router.patch("/:id/map", async (req, res): Promise<void> => {
   const tenantId = (req as any).tenantId;
   const raw = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
   const params = MapEbayListingParams.safeParse({ id: parseInt(raw, 10) });

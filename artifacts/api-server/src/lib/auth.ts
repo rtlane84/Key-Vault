@@ -26,17 +26,32 @@ export function verifyToken(token: string): { email: string; tenantId: number } 
   }
 }
 
+import { logger } from "./logger";
+
 export function requireAuth(req: Request, res: Response, next: NextFunction): void {
   const authHeader = req.headers.authorization;
   const token = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : null;
 
+  if (req.path.includes("/ebay/connect")) {
+    logger.info({
+      path: req.path,
+      originalUrl: req.originalUrl,
+      method: req.method,
+      hasAuthHeader: !!authHeader,
+      authHeaderPrefix: authHeader?.slice(0, 15),
+      tokenLength: token?.length ?? 0
+    }, "requireAuth check for /ebay/connect");
+  }
+
   if (!token) {
+    logger.warn({ path: req.path, method: req.method, headers: req.headers }, "Unauthorized: No token provided");
     res.status(401).json({ error: "Unauthorized" });
     return;
   }
 
   const decoded = verifyToken(token);
   if (!decoded) {
+    logger.warn({ path: req.path, method: req.method }, "Unauthorized: Invalid or expired token");
     res.status(401).json({ error: "Invalid or expired token" });
     return;
   }

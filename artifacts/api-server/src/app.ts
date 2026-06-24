@@ -40,10 +40,47 @@ app.use(express.urlencoded({ extended: true }));
 // Health check (no auth)
 app.use("/api", healthRouter);
 
-// Apply requireAuth to protected stripe routes BEFORE mounting stripeRouter
+// eBay callback MUST be public and handled BEFORE any requireAuth middleware
+import ebayRouter from "./routes/ebay";
+
+// Public eBay callback handler
+app.get("/api/ebay/callback", (req, res, next) => {
+  logger.info({ path: req.path, query: req.query }, "eBay callback handler reached (skipping auth)");
+  // Execute the ebayRouter specifically for this path
+  ebayRouter(req, res, next);
+});
+
+// Diagnostics for route matching
+app.use("/api/ebay/connect", (req, res, next) => {
+  const authHeader = req.headers.authorization;
+  logger.info({ 
+    path: req.path,
+    originalUrl: req.originalUrl,
+    method: req.method,
+    hasAuth: !!authHeader,
+    authPrefix: authHeader?.slice(0, 20)
+  }, "Hit /api/ebay/connect diagnostic");
+  next();
+});
+
+// Apply requireAuth to protected routes ONLY
 import { requireAuth } from "./lib/auth";
+
+// Mount eBay router — individual routes inside handle their own auth if needed
+// but /ebay/callback was already handled above
+app.use("/api", ebayRouter);
+
 app.use("/api/stripe/connect", requireAuth);
 app.use("/api/stripe/callback", (req, res, next) => next()); // Callback is public (uses JWT state)
+
+app.use("/api/ebay/status", requireAuth);
+app.use("/api/ebay/history", requireAuth);
+app.use("/api/ebay/sync", requireAuth);
+app.use("/api/ebay/poll-settings", requireAuth);
+
+import ebayListingsRouter from "./routes/ebay-listings";
+app.use("/api/ebay/listings", requireAuth);
+app.use("/api/ebay/listings", ebayListingsRouter);
 
 // Stripe routes
 app.use("/api", stripeRouter);

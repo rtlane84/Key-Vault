@@ -1,14 +1,19 @@
+import jwt from "jsonwebtoken";
 import { Router, type IRouter } from "express";
-import { eq } from "drizzle-orm";
-import { db, ebaySettingsTable, syncLogsTable } from "@workspace/db";
+import { eq, desc, and } from "drizzle-orm";
+import { db, ebaySettingsTable, syncLogsTable, ebaySyncHistoryTable } from "@workspace/db";
 import { runMockSync, runRealEbaySync } from "../lib/ebay-sync";
 import { logger } from "../lib/logger";
 import { UpdateEbayPollSettingsBody } from "@workspace/api-zod";
+import crypto from "crypto";
+import { getEbayConfig } from "../lib/ebay-config";
+import { requireAuth } from "../lib/auth";
 
 const router: IRouter = Router();
 
-const EBAY_CLIENT_ID = process.env.EBAY_CLIENT_ID ?? "";
-const EBAY_REDIRECT_URI = process.env.EBAY_REDIRECT_URI ?? "";
+const JWT_SECRET = process.env.JWT_SECRET || "dev-secret-123456";
+const ebayConfig = getEbayConfig();
+
 const EBAY_SCOPES = [
   "https://api.ebay.com/oauth/api_scope",
   "https://api.ebay.com/oauth/api_scope/sell.fulfillment",
@@ -19,7 +24,7 @@ const EBAY_SCOPES = [
 router.get("/ebay/status", async (req, res): Promise<void> => {
   const tenantId = (req as any).tenantId;
   const settings = await db.select().from(ebaySettingsTable).where(eq(ebaySettingsTable.tenantId, tenantId)).limit(1);
-  const mockMode = !EBAY_CLIENT_ID;
+  const mockMode = ebayConfig.isMockMode;
 
   if (settings.length === 0 || !settings[0].accessToken) {
     res.json({
@@ -42,37 +47,113 @@ router.get("/ebay/status", async (req, res): Promise<void> => {
   });
 });
 
-router.get("/ebay/connect", async (req, res): Promise<void> => {
-  if (!EBAY_CLIENT_ID) {
+router.get("/ebay/history", async (req, res): Promise<void> => {
+  const tenantId = (req as any).tenantId;
+  const history = await db
+    .select()
+    .from(ebaySyncHistoryTable)
+    .where(eq(ebaySyncHistoryTable.tenantId, tenantId))
+    .orderBy(desc(ebaySyncHistoryTable.createdAt))
+    .limit(50);
+  
+  res.json(history);
+});
+
+router.post("/ebay/connect", requireAuth, async (req, res): Promise<void> => {
+  const tenantId = (req as any).tenantId;
+
+  logger.info({ 
+    tenantId, 
+    method: req.method, 
+    path: req.path,
+    hasTenantId: !!tenantId,
+    authHeader: !!req.headers.authorization
+  }, "POST /ebay/connect handler reached");
+
+  if (ebayConfig.isMockMode) {
     res.json({ url: "#mock-mode-no-ebay-credentials" });
     return;
   }
 
-  const tenantId = (req as any).tenantId;
-  const state = `tenant_${tenantId}_${Math.random().toString(36).slice(2)}`;
-  const url = `https://auth.ebay.com/oauth2/authorize?client_id=${encodeURIComponent(EBAY_CLIENT_ID)}&response_type=code&redirect_uri=${encodeURIComponent(EBAY_REDIRECT_URI)}&scope=${encodeURIComponent(EBAY_SCOPES)}&state=${state}`;
-  res.json({ url });
-});
-
-// OAuth callback — called by eBay, redirects to frontend
-router.get("/ebay/callback", async (req, res): Promise<void> => {
-  const code = req.query.code as string | undefined;
-  const error = req.query.error as string | undefined;
-
-  if (error || !code) {
-    logger.warn({ error, query: req.query }, "eBay OAuth callback error");
-    res.redirect("/?ebay_error=1");
+  if (!tenantId) {
+    res.status(401).json({ error: "Unauthorized: Tenant ID missing" });
     return;
   }
 
-  if (!EBAY_CLIENT_ID || !process.env.EBAY_CLIENT_SECRET) {
-    res.redirect("/?ebay_error=missing_credentials");
+  // Generate a signed state token containing tenantId
+  const state = jwt.sign(
+    { 
+      tenantId: Number(tenantId), 
+      nonce: Math.random().toString(36).slice(2) 
+    }, 
+    JWT_SECRET, 
+    { expiresIn: "10m" }
+  );
+
+  const url = `${ebayConfig.authBase}/oauth2/authorize?client_id=${encodeURIComponent(ebayConfig.clientId)}&response_type=code&redirect_uri=${encodeURIComponent(ebayConfig.redirectUri)}&scope=${encodeURIComponent(EBAY_SCOPES)}&state=${state}`;
+  
+  logger.info({ 
+    env: ebayConfig.env, 
+    clientId: ebayConfig.clientId.substring(0, 10) + "...", 
+    redirectUri: ebayConfig.redirectUri,
+    tenantId: Number(tenantId)
+  }, "Generated eBay OAuth URL");
+
+  res.json({ url });
+});
+
+router.get("/ebay/callback", async (req, res): Promise<void> => {
+  logger.info("eBay callback handler reached");
+  const { code, state, error, error_description } = req.query;
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? process.env.APP_URL ?? "http://localhost:3001";
+
+  if (error || !code) {
+    logger.warn({ error, error_description, query: req.query }, "eBay OAuth callback error");
+    res.redirect(`${appUrl}/ebay?ebay_error=1`);
+    return;
+  }
+
+  if (ebayConfig.isMockMode) {
+    logger.error("eBay callback: missing EBAY_CLIENT_ID or EBAY_CLIENT_SECRET");
+    res.redirect(`${appUrl}/ebay?ebay_error=missing_credentials`);
+    return;
+  }
+
+  if (!state || typeof state !== "string") {
+    logger.warn({ hasState: !!state }, "eBay callback missing state");
+    res.redirect(`${appUrl}/ebay?ebay_error=missing_params`);
+    return;
+  }
+
+  let tenantId: number;
+  try {
+    logger.info("eBay callback token exchange start");
+    const decoded = jwt.verify(state, JWT_SECRET) as any;
+    
+    if (!decoded.tenantId) {
+      logger.error({ state }, "eBay callback: tenantId missing from decoded JWT state");
+      res.redirect(`${appUrl}/ebay?ebay_error=invalid_state`);
+      return;
+    }
+
+    tenantId = Number(decoded.tenantId);
+    
+    if (isNaN(tenantId) || tenantId <= 0) {
+      logger.error({ tenantId, raw: decoded.tenantId }, "eBay callback: tenantId is not a valid positive integer");
+      res.redirect(`${appUrl}/ebay?ebay_error=invalid_state`);
+      return;
+    }
+
+    logger.info({ tenantId }, "eBay callback: decoded tenantId from state");
+  } catch (err) {
+    logger.warn({ err }, "eBay callback invalid or expired state");
+    res.redirect(`${appUrl}/ebay?ebay_error=invalid_state`);
     return;
   }
 
   try {
-    const credentials = Buffer.from(`${EBAY_CLIENT_ID}:${process.env.EBAY_CLIENT_SECRET}`).toString("base64");
-    const tokenRes = await fetch("https://api.ebay.com/identity/v1/oauth2/token", {
+    const credentials = Buffer.from(`${ebayConfig.clientId}:${ebayConfig.clientSecret}`).toString("base64");
+    const tokenRes = await fetch(`${ebayConfig.apiBase}/identity/v1/oauth2/token`, {
       method: "POST",
       headers: {
         Authorization: `Basic ${credentials}`,
@@ -80,15 +161,15 @@ router.get("/ebay/callback", async (req, res): Promise<void> => {
       },
       body: new URLSearchParams({
         grant_type: "authorization_code",
-        code,
-        redirect_uri: EBAY_REDIRECT_URI,
+        code: code as string,
+        redirect_uri: ebayConfig.redirectUri,
       }),
     });
 
     if (!tokenRes.ok) {
       const text = await tokenRes.text();
       logger.error({ status: tokenRes.status, body: text }, "eBay token exchange failed");
-      res.redirect("/?ebay_error=token_exchange_failed");
+      res.redirect(`${appUrl}/ebay?ebay_error=token_exchange_failed`);
       return;
     }
 
@@ -99,11 +180,13 @@ router.get("/ebay/callback", async (req, res): Promise<void> => {
       refresh_token_expires_in: number;
     };
 
+    logger.info({ tenantId }, "eBay callback token exchange success");
+
     const expiresAt = new Date(Date.now() + tokens.expires_in * 1000);
 
     let sellerId: string | undefined;
     try {
-      const identityRes = await fetch("https://api.ebay.com/commerce/identity/v1/user/", {
+      const identityRes = await fetch(`${ebayConfig.apiBase}/commerce/identity/v1/user/`, {
         headers: { Authorization: `Bearer ${tokens.access_token}` },
       });
       if (identityRes.ok) {
@@ -112,17 +195,6 @@ router.get("/ebay/callback", async (req, res): Promise<void> => {
       }
     } catch {
       logger.warn("Could not fetch eBay seller identity");
-    }
-
-    // Extract tenantId from state
-    const stateStr = req.query.state as string | undefined;
-    const tenantIdMatch = stateStr?.match(/^tenant_(\d+)_/);
-    const tenantId = tenantIdMatch ? parseInt(tenantIdMatch[1], 10) : null;
-
-    if (!tenantId) {
-      logger.error({ state: req.query.state }, "eBay callback missing tenantId in state");
-      res.redirect("/?ebay_error=missing_tenant");
-      return;
     }
 
     const existing = await db.select().from(ebaySettingsTable).where(eq(ebaySettingsTable.tenantId, tenantId)).limit(1);
@@ -143,6 +215,8 @@ router.get("/ebay/callback", async (req, res): Promise<void> => {
       });
     }
 
+    logger.info({ tenantId, sellerId }, "eBay tokens saved for tenant");
+
     await db.insert(syncLogsTable).values({
       tenantId,
       event: "oauth_connected",
@@ -150,13 +224,10 @@ router.get("/ebay/callback", async (req, res): Promise<void> => {
       message: `eBay account connected${sellerId ? ` (seller: ${sellerId})` : ""}`,
     });
 
-    // Redirect back to dashboard with the tenant-specific URL if possible
-    // In a real SaaS we might redirect to a specific subdomain or store slug
-    // For now, redirect to the main dashboard
-    res.redirect("/ebay?connected=1");
+    res.redirect(`${appUrl}/ebay?ebay_success=1`);
   } catch (err) {
     logger.error({ err }, "eBay OAuth callback failed");
-    res.redirect("/?ebay_error=unknown");
+    res.redirect(`${appUrl}/ebay?ebay_error=unknown`);
   }
 });
 
@@ -179,7 +250,7 @@ router.post("/ebay/disconnect", async (req, res): Promise<void> => {
     message: "eBay account disconnected",
   });
 
-  res.json({ connected: false, mockMode: !EBAY_CLIENT_ID, sellerId: null, tokenExpiresAt: null, lastSyncAt: null });
+  res.json({ connected: false, mockMode: ebayConfig.isMockMode, sellerId: null, tokenExpiresAt: null, lastSyncAt: null });
 });
 
 router.post("/ebay/sync", async (req, res): Promise<void> => {
@@ -242,10 +313,32 @@ router.patch("/ebay/poll-settings", async (req, res): Promise<void> => {
 router.post("/ebay/webhooks", async (req, res): Promise<void> => {
   // eBay Marketplace Account Deletion (Required for GDPR/Privacy)
   // Or MarketPlace Notifications
-  logger.info({ body: req.body }, "eBay webhook received");
+  logger.info({ body: req.body, headers: req.headers }, "eBay webhook received");
 
-  // TODO: Implement notification signature verification and order processing
-  // This is a placeholder for future real-time fulfillment via eBay webhooks
+  // Handle Challenge (Required for webhook activation)
+  const challengeCode = req.query.challenge_code as string;
+  if (challengeCode) {
+    const verificationToken = process.env.EBAY_WEBHOOK_VERIFICATION_TOKEN || "default_verification_token";
+    const endpoint = `${process.env.VITE_API_URL}/api/ebay/webhooks`;
+    
+    const hash = crypto.createHash("sha256");
+    hash.update(challengeCode);
+    hash.update(verificationToken);
+    hash.update(endpoint);
+    const responseHash = hash.digest("hex");
+    
+    res.status(200).json({ challengeResponse: responseHash });
+    return;
+  }
+
+  // Handle Notifications (MARKETPLACE_CHECKOUT_ORDER_MET)
+  const notification = req.body;
+  if (notification?.metadata?.topic === "MARKETPLACE_CHECKOUT_ORDER_MET") {
+    // Note: We need to figure out which tenant this belongs to.
+    // Usually the payload contains the seller's eBay username or ID.
+    // For now, we log and wait for implementation of multi-tenant webhook dispatch.
+    logger.info({ ebayOrderId: notification.notificationPayload?.orderId }, "eBay Order notification received");
+  }
 
   res.status(200).send("OK");
 });

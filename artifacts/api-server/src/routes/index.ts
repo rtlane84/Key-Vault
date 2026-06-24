@@ -65,8 +65,8 @@ router.use(requireAuth);
 router.use(productsRouter);
 router.use(keysRouter);
 // router.use(ordersRouter); // Already added above, which has internal auth handling
-router.use(ebayRouter);
-router.use(ebayListingsRouter);
+// router.use(ebayRouter); // Now handled in app.ts for custom auth scoping
+// router.use(ebayListingsRouter); // Now handled in app.ts to ensure consistent mounting
 router.use(dashboardRouter);
 router.use(syncLogsRouter);
 router.use(tenantsRouter);
