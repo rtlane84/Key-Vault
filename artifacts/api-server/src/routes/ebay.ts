@@ -21,7 +21,7 @@ const EBAY_SCOPES = [
   "https://api.ebay.com/oauth/api_scope/commerce.identity.readonly",
 ].join(" ");
 
-router.get("/ebay/status", async (req, res): Promise<void> => {
+router.get("/ebay/status", requireAuth, async (req, res): Promise<void> => {
   const tenantId = (req as any).tenantId;
   const settings = await db.select().from(ebaySettingsTable).where(eq(ebaySettingsTable.tenantId, tenantId)).limit(1);
   const mockMode = ebayConfig.isMockMode;
@@ -47,7 +47,7 @@ router.get("/ebay/status", async (req, res): Promise<void> => {
   });
 });
 
-router.get("/ebay/history", async (req, res): Promise<void> => {
+router.get("/ebay/history", requireAuth, async (req, res): Promise<void> => {
   const tenantId = (req as any).tenantId;
   const history = await db
     .select()
@@ -180,7 +180,12 @@ router.get("/ebay/callback", async (req, res): Promise<void> => {
       refresh_token_expires_in: number;
     };
 
-    logger.info({ tenantId }, "eBay callback token exchange success");
+    logger.info({ 
+      tenantId, 
+      hasAccessToken: !!tokens.access_token,
+      hasRefreshToken: !!tokens.refresh_token,
+      expiresIn: tokens.expires_in
+    }, "eBay callback token exchange success");
 
     const expiresAt = new Date(Date.now() + tokens.expires_in * 1000);
 
@@ -192,27 +197,32 @@ router.get("/ebay/callback", async (req, res): Promise<void> => {
       if (identityRes.ok) {
         const identity = await identityRes.json() as { username?: string };
         sellerId = identity.username;
+        logger.info({ sellerId }, "eBay callback: fetched seller identity");
       }
-    } catch {
-      logger.warn("Could not fetch eBay seller identity");
+    } catch (err) {
+      logger.warn({ err }, "Could not fetch eBay seller identity");
     }
 
     const existing = await db.select().from(ebaySettingsTable).where(eq(ebaySettingsTable.tenantId, tenantId)).limit(1);
     if (existing.length > 0) {
-      await db.update(ebaySettingsTable).set({
+      logger.info({ tenantId, settingsId: existing[0].id }, "eBay callback: updating existing settings");
+      const updated = await db.update(ebaySettingsTable).set({
         accessToken: tokens.access_token,
         refreshToken: tokens.refresh_token,
         tokenExpiresAt: expiresAt,
         sellerId,
-      }).where(eq(ebaySettingsTable.id, existing[0].id));
+      }).where(eq(ebaySettingsTable.id, existing[0].id)).returning();
+      logger.info({ rowsUpdated: updated.length, tenantId: updated[0]?.tenantId }, "eBay callback: settings updated");
     } else {
-      await db.insert(ebaySettingsTable).values({
+      logger.info({ tenantId }, "eBay callback: inserting new settings");
+      const inserted = await db.insert(ebaySettingsTable).values({
         tenantId,
         accessToken: tokens.access_token,
         refreshToken: tokens.refresh_token,
         tokenExpiresAt: expiresAt,
         sellerId,
-      });
+      }).returning();
+      logger.info({ rowsInserted: inserted.length, tenantId: inserted[0]?.tenantId }, "eBay callback: settings inserted");
     }
 
     logger.info({ tenantId, sellerId }, "eBay tokens saved for tenant");
@@ -231,7 +241,7 @@ router.get("/ebay/callback", async (req, res): Promise<void> => {
   }
 });
 
-router.post("/ebay/disconnect", async (req, res): Promise<void> => {
+router.post("/ebay/disconnect", requireAuth, async (req, res): Promise<void> => {
   const tenantId = (req as any).tenantId;
   const settings = await db.select().from(ebaySettingsTable).where(eq(ebaySettingsTable.tenantId, tenantId)).limit(1);
   if (settings.length > 0) {
@@ -253,8 +263,9 @@ router.post("/ebay/disconnect", async (req, res): Promise<void> => {
   res.json({ connected: false, mockMode: ebayConfig.isMockMode, sellerId: null, tokenExpiresAt: null, lastSyncAt: null });
 });
 
-router.post("/ebay/sync", async (req, res): Promise<void> => {
+router.post("/ebay/sync", requireAuth, async (req, res): Promise<void> => {
   const tenantId = (req as any).tenantId;
+  logger.info({ tenantId, method: req.method, path: req.path }, "POST /ebay/sync reached");
   try {
     const result = await runRealEbaySync(tenantId);
     res.json(result);
@@ -265,7 +276,7 @@ router.post("/ebay/sync", async (req, res): Promise<void> => {
   }
 });
 
-router.post("/ebay/mock-sync", async (req, res): Promise<void> => {
+router.post("/ebay/mock-sync", requireAuth, async (req, res): Promise<void> => {
   const tenantId = (req as any).tenantId;
   try {
     const result = await runMockSync(tenantId);
@@ -277,7 +288,7 @@ router.post("/ebay/mock-sync", async (req, res): Promise<void> => {
   }
 });
 
-router.get("/ebay/poll-settings", async (req, res): Promise<void> => {
+router.get("/ebay/poll-settings", requireAuth, async (req, res): Promise<void> => {
   const tenantId = (req as any).tenantId;
   const settings = await db.select().from(ebaySettingsTable).where(eq(ebaySettingsTable.tenantId, tenantId)).limit(1);
   if (settings.length === 0) {
@@ -287,7 +298,7 @@ router.get("/ebay/poll-settings", async (req, res): Promise<void> => {
   res.json({ pollIntervalMinutes: settings[0].pollIntervalMinutes });
 });
 
-router.patch("/ebay/poll-settings", async (req, res): Promise<void> => {
+router.patch("/ebay/poll-settings", requireAuth, async (req, res): Promise<void> => {
   const tenantId = (req as any).tenantId;
   const parsed = UpdateEbayPollSettingsBody.safeParse(req.body);
   if (!parsed.success) {

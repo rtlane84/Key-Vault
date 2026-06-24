@@ -8,6 +8,14 @@ const ebayConfig = getEbayConfig();
 
 export async function refreshEbayToken(tenantId: number): Promise<string> {
   const settings = await db.select().from(ebaySettingsTable).where(eq(ebaySettingsTable.tenantId, tenantId)).limit(1);
+  
+  logger.info({ 
+    tenantId, 
+    settingsFound: settings.length > 0,
+    hasRefreshToken: settings.length > 0 && !!settings[0].refreshToken,
+    sellerId: settings.length > 0 ? settings[0].sellerId : null
+  }, "refreshEbayToken: database check");
+
   if (settings.length === 0 || !settings[0].refreshToken) {
     throw new Error("eBay account not connected or refresh token missing.");
   }
